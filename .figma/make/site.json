@@ -1,0 +1,10 @@
+{
+  "description": "Streamline attendance management for organizations with a secure digital check-in system, enabling staff to log attendance effortlessly and administrators to track records efficiently.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

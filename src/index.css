@@ -1,0 +1,188 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-display: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --color-navy: #1B3A6B;
+  --color-navy-dark: #122952;
+  --color-navy-mid: #1e4080;
+  --color-navy-50: #EFF6FF;
+  --color-navy-100: #DBEAFE;
+
+  --color-success: #15803D;
+  --color-success-bg: #DCFCE7;
+  --color-success-border: #BBF7D0;
+
+  --color-late: #B45309;
+  --color-late-bg: #FEF3C7;
+  --color-late-border: #FDE68A;
+
+  --color-danger: #DC2626;
+  --color-danger-bg: #FEE2E2;
+
+  --color-surface: #F8FAFC;
+  --color-border: #E2E8F0;
+  --color-muted: #64748B;
+
+  --radius-card: 0.75rem;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: #F8FAFC;
+  color: #0F172A;
+  margin: 0;
+  padding: 0;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+.metro-phone-frame {
+  width: 390px;
+  min-height: 844px;
+  background: #fff;
+  border-radius: 44px;
+  box-shadow: 0 0 0 1px #1B3A6B22, 0 32px 80px rgba(15,23,42,0.22), 0 8px 24px rgba(15,23,42,0.12);
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.metro-phone-notch {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 120px;
+  height: 34px;
+  background: #0F172A;
+  border-radius: 0 0 20px 20px;
+  z-index: 50;
+}
+
+.metro-phone-screen {
+  height: 844px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  scrollbar-width: none;
+}
+
+.metro-phone-screen::-webkit-scrollbar {
+  display: none;
+}
+
+.metro-status-bar {
+  height: 44px;
+  display: flex;
+  align-items: flex-end;
+  padding: 0 24px 8px;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  color: #0F172A;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+
+.location-map-bg {
+  background: #E8EFF8;
+  background-image:
+    linear-gradient(rgba(100,116,139,0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(100,116,139,0.08) 1px, transparent 1px);
+  background-size: 30px 30px;
+}
+
+.geofence-circle {
+  position: absolute;
+  border: 2px dashed #15803D;
+  border-radius: 50%;
+  background: rgba(21, 128, 61, 0.08);
+  transform: translate(-50%, -50%);
+}
+
+.pulse-ring {
+  animation: pulse-ring 2s ease-out infinite;
+}
+
+@keyframes pulse-ring {
+  0% { transform: translate(-50%, -50%) scale(0.8); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1.2); opacity: 0; }
+}
+
+.check-animate {
+  animation: check-in 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+}
+
+@keyframes check-in {
+  0% { transform: scale(0) rotate(-10deg); opacity: 0; }
+  100% { transform: scale(1) rotate(0); opacity: 1; }
+}
+
+.fade-in {
+  animation: fade-in 0.3s ease both;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.slide-up {
+  animation: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.admin-sidebar {
+  width: 240px;
+  flex-shrink: 0;
+}
+
+.map-road-h {
+  position: absolute;
+  height: 8px;
+  background: rgba(255,255,255,0.6);
+  border-radius: 4px;
+}
+
+.map-road-v {
+  position: absolute;
+  width: 8px;
+  background: rgba(255,255,255,0.6);
+  border-radius: 4px;
+}
