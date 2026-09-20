@@ -20,6 +20,7 @@ import Reports from './screens/admin/Reports';
 import LocationSettings from './screens/admin/LocationSettings';
 import Settings from './screens/admin/Settings';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
+import { getTodayUserAttendance } from './lib/firebase';
 
 function AccessDenied({ nav, onPreviewAdmin }: { nav: NavProps; onPreviewAdmin: () => void }) {
   return (
@@ -57,6 +58,9 @@ function AccessDenied({ nav, onPreviewAdmin }: { nav: NavProps; onPreviewAdmin: 
   );
 }
 
+const SESSION_DATE_KEY = 'metroattend_session_date';
+const SESSION_STATE_KEY = 'metroattend_session_state';
+
 function MainContent() {
   const [devAdminBypass, setDevAdminBypass] = useState(() => {
     return window.location.search.includes('admin') || window.location.hash.includes('admin');
@@ -69,13 +73,85 @@ function MainContent() {
     return 'landing';
   });
 
-  const [checkInStatus, setCheckInStatus] = useState<CheckInStatus>('not-checked-in');
-  const [checkInTime, setCheckInTime] = useState('');
-  const [checkOutTime, setCheckOutTime] = useState('');
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  // Daily auto-reset check
+  const [checkInStatus, setCheckInStatus] = useState<CheckInStatus>(() => {
+    try {
+      const storedDate = localStorage.getItem(SESSION_DATE_KEY);
+      if (storedDate === todayStr) {
+        const raw = localStorage.getItem(SESSION_STATE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          return parsed.status || 'not-checked-in';
+        }
+      }
+    } catch {}
+    return 'not-checked-in';
+  });
+
+  const [checkInTime, setCheckInTime] = useState<string>(() => {
+    try {
+      const storedDate = localStorage.getItem(SESSION_DATE_KEY);
+      if (storedDate === todayStr) {
+        const raw = localStorage.getItem(SESSION_STATE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          return parsed.checkInTime || '';
+        }
+      }
+    } catch {}
+    return '';
+  });
+
+  const [checkOutTime, setCheckOutTime] = useState<string>(() => {
+    try {
+      const storedDate = localStorage.getItem(SESSION_DATE_KEY);
+      if (storedDate === todayStr) {
+        const raw = localStorage.getItem(SESSION_STATE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          return parsed.checkOutTime || '';
+        }
+      }
+    } catch {}
+    return '';
+  });
+
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
   const [adminTab, setAdminTab] = useState<AdminTab>('dashboard');
 
-  const { isAdmin } = useAuth();
+  const { user, profile, isAdmin } = useAuth();
+
+  // Persist session state for today
+  useEffect(() => {
+    localStorage.setItem(SESSION_DATE_KEY, todayStr);
+    localStorage.setItem(SESSION_STATE_KEY, JSON.stringify({
+      status: checkInStatus,
+      checkInTime,
+      checkOutTime,
+    }));
+  }, [todayStr, checkInStatus, checkInTime, checkOutTime]);
+
+  // Synchronize with database on login/mount
+  useEffect(() => {
+    const uid = user?.uid || profile?.id || profile?.uid;
+    if (uid) {
+      getTodayUserAttendance(uid).then((record) => {
+        if (record && record.date === todayStr) {
+          if (record.checkOut && record.checkOut !== '—') {
+            setCheckInStatus('checked-out');
+            setCheckInTime(record.checkIn);
+            setCheckOutTime(record.checkOut);
+          } else if (record.checkIn) {
+            setCheckInStatus('checked-in');
+            setCheckInTime(record.checkIn);
+            setCheckOutTime('');
+          }
+        }
+      });
+    }
+  }, [user, profile, todayStr]);
 
   const nav: NavProps = {
     navigate: setScreen,
@@ -127,7 +203,7 @@ function MainContent() {
       <PWAInstallPrompt />
 
       {/* Floating View Switcher: allows instant switching between Employee App and Admin Console */}
-      <div className="fixed bottom-4 right-4 z-50 bg-slate-900/90 text-white backdrop-blur-md rounded-2xl p-1.5 shadow-2xl border border-white/20 flex items-center gap-1 text-xs font-display font-bold">
+      <div className="fixed bottom-20 sm:bottom-4 right-4 z-50 bg-slate-900/90 text-white backdrop-blur-md rounded-2xl p-1.5 shadow-2xl border border-white/20 flex items-center gap-1 text-xs font-display font-bold">
         <button
           onClick={() => {
             setScreen('dashboard');

@@ -58,43 +58,41 @@ export default function Landing({ nav }: { nav: NavProps }) {
       <div className="relative z-10 flex-1 flex flex-col justify-center px-8 pb-8">
         {/* Visual */}
         <div className="mb-10 flex justify-center">
-          <div className="relative w-72 h-44">
-            {/* Phone mockup */}
-            <div className="absolute left-1/2 top-0 -translate-x-1/2 w-32 h-44 bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 p-3 shadow-2xl">
-              <div className="w-8 h-1 bg-white/20 rounded-full mx-auto mb-3" />
-              {/* Check-in card */}
-              <div className="bg-white/15 rounded-xl p-2.5 mb-2">
-                <div className="text-white/60 text-[8px] font-mono mb-1">TODAY'S STATUS</div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-4 h-4 rounded-full bg-success flex items-center justify-center">
-                    <svg width="8" height="8" viewBox="0 0 12 12" fill="white"><path d="M2 6l3 3 5-5" stroke="white" strokeWidth="1.5" strokeLinecap="round" fill="none"/></svg>
-                  </div>
-                  <div className="text-white text-[9px] font-display font-700">PRESENT</div>
+          <div className="relative max-w-sm w-full bg-white/10 backdrop-blur-md rounded-3xl border border-white/20 p-5 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-white p-1 flex items-center justify-center">
+                  <Logo size={24} />
+                </div>
+                <div>
+                  <div className="text-white text-xs font-display font-bold">MetroWorks Main Office</div>
+                  <div className="text-white/60 text-[10px] font-mono">Geofence Perimeter Active</div>
                 </div>
               </div>
-              {/* Time */}
-              <div className="bg-white/10 rounded-lg p-2">
-                <div className="text-white/40 text-[7px] font-mono">CHECK-IN</div>
-                <div className="text-white text-[11px] font-mono font-500">8:03 AM</div>
+              <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Live GPS
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5 my-3.5">
+              <div className="bg-white/10 rounded-2xl p-3 border border-white/10">
+                <div className="text-white/60 text-[9px] font-mono uppercase">Check-In Open</div>
+                <div className="text-white text-sm font-display font-bold mt-0.5">Flexible Hours</div>
+                <div className="text-emerald-300 text-[9px] font-mono mt-0.5">Early & late supported</div>
               </div>
-              {/* Location badge */}
-              <div className="flex items-center gap-1 mt-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-                <div className="text-success text-[7px] font-display font-600">Location verified</div>
+              <div className="bg-white/10 rounded-2xl p-3 border border-white/10">
+                <div className="text-white/60 text-[9px] font-mono uppercase">Verification</div>
+                <div className="text-white text-sm font-display font-bold mt-0.5">Satellite GPS</div>
+                <div className="text-blue-200 text-[9px] font-mono mt-0.5">Within 100m radius</div>
               </div>
             </div>
 
-            {/* Floating badges */}
-            <div className="absolute -left-2 top-8 bg-white rounded-xl px-2.5 py-1.5 shadow-lg flex items-center gap-1.5">
-              <div className="w-4 h-4 rounded-full bg-success-bg flex items-center justify-center">
-                <div className="w-2 h-2 rounded-full bg-success" />
-              </div>
-              <span className="text-slate-700 text-[10px] font-display font-600">GPS Verified</span>
-            </div>
-
-            <div className="absolute -right-2 bottom-4 bg-white rounded-xl px-2.5 py-1.5 shadow-lg flex items-center gap-1.5">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#1B3A6B" strokeWidth="2.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-              <span className="text-slate-700 text-[10px] font-display font-600">Live Attendance</span>
+            <div className="bg-emerald-500/15 border border-emerald-500/20 rounded-xl px-3 py-2 flex items-center justify-between">
+              <span className="text-white text-xs font-display font-semibold flex items-center gap-2">
+                <span>📱</span> Official Mobile PWA Ready
+              </span>
+              <span className="text-emerald-300 text-[10px] font-mono font-bold">iOS & Android</span>
             </div>
           </div>
         </div>

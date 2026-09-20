@@ -197,8 +197,9 @@ export default function StaffManagement({ nav }: { nav: NavProps }) {
 
       {/* Table */}
       <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden">
-        <table className="w-full">
-          <thead>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
             <tr className="border-b border-slate-100 bg-surface">
               {['Employee', 'Staff ID', 'Category', 'Department', 'Position', 'Status', 'Actions'].map(h => (
                 <th key={h} className="text-left text-[10px] font-display font-bold text-slate-400 uppercase tracking-wide px-5 py-3.5">{h}</th>
@@ -267,7 +268,8 @@ export default function StaffManagement({ nav }: { nav: NavProps }) {
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
+        </div>
 
         {filtered.length === 0 && (
           <div className="py-16 text-center">

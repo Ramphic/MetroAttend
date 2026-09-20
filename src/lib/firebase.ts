@@ -329,6 +329,66 @@ export async function recordCheckOut(userId: string, checkOutTime: string): Prom
 }
 
 /**
+ * Cancel an early check-out to resume the active workday
+ */
+export async function cancelCheckOut(userId: string): Promise<void> {
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  if (db) {
+    try {
+      const q = query(
+        collection(db, 'attendance'),
+        where('userId', '==', userId),
+        where('date', '==', todayStr)
+      );
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const docRef = snap.docs[0].ref;
+        await updateDoc(docRef, { checkOut: '—' });
+        return;
+      }
+    } catch (e) {
+      console.warn('Error resetting check-out in Firestore, using local storage:', e);
+    }
+  }
+
+  const local = getLocalAttendance();
+  const idx = local.findIndex(r => (r.userId === userId || r.employeeId === userId) && (r.date === todayStr || r.date === 'Today'));
+  if (idx >= 0) {
+    local[idx].checkOut = '—';
+    saveLocalAttendance(local);
+  }
+}
+
+/**
+ * Fetch today's verified attendance record for a user
+ */
+export async function getTodayUserAttendance(userId: string): Promise<AttendanceRecord | null> {
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  if (db) {
+    try {
+      const q = query(
+        collection(db, 'attendance'),
+        where('userId', '==', userId),
+        where('date', '==', todayStr)
+      );
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        return { ...snap.docs[0].data(), id: snap.docs[0].id } as AttendanceRecord;
+      }
+    } catch (e) {
+      console.warn('Error fetching today user attendance from Firestore:', e);
+    }
+  }
+
+  const local = getLocalAttendance();
+  const found = local.find(r => (r.userId === userId || r.employeeId === userId) && (r.date === todayStr || r.date === 'Today'));
+  return found || null;
+}
+
+
+/**
  * Subscribe to today's attendance (real-time for Admin Dashboard)
  */
 export function subscribeTodayAttendance(callback: (records: AttendanceRecord[]) => void): () => void {
