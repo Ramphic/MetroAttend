@@ -54,6 +54,9 @@ export interface Employee {
   photoURL?: string;
   role?: UserRole;
   profileComplete?: boolean;
+  lastDeviceId?: string;
+  lastDeviceLabel?: string;
+  registeredDeviceId?: string;
 }
 
 export interface AttendanceRecord {
@@ -74,6 +77,13 @@ export interface AttendanceRecord {
   longitude?: number;
   distanceMeters?: number;
   timestamp?: number;
+  deviceId?: string;
+  deviceModel?: string;
+  deviceBrowser?: string;
+  deviceOs?: string;
+  deviceLabel?: string;
+  isSharedDevice?: boolean;
+  sharedWithEmployeeName?: string;
 }
 
 export interface WorkplaceSettings {

@@ -3,8 +3,13 @@ import {
   getAuth, 
   GoogleAuthProvider, 
   signInWithPopup, 
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile,
   signOut as firebaseSignOut,
-  Auth 
+  Auth,
+  User
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -22,6 +27,7 @@ import {
   Firestore 
 } from 'firebase/firestore';
 import { Employee, AttendanceRecord, WorkplaceSettings, StaffCategory, SystemNotification, AttendanceStatus } from '../types';
+import { getDeviceSignature } from './deviceFingerprint';
 
 // Configuration from environment variables
 const firebaseConfig = {
@@ -58,6 +64,35 @@ if (isFirebaseConfigured) {
 }
 
 export { auth, db, googleProvider };
+
+/**
+ * Sign in with Email and Password
+ */
+export async function signInEmailPassword(email: string, password: string): Promise<User> {
+  if (!auth) throw new Error('Firebase Authentication is not available. Please verify credentials.');
+  const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+  return cred.user;
+}
+
+/**
+ * Register a new employee with Email and Password
+ */
+export async function createEmailAccount(email: string, password: string, displayName: string): Promise<User> {
+  if (!auth) throw new Error('Firebase Authentication is not available. Please verify credentials.');
+  const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+  if (displayName.trim()) {
+    await updateProfile(cred.user, { displayName: displayName.trim() });
+  }
+  return cred.user;
+}
+
+/**
+ * Send password reset email
+ */
+export async function resetUserPassword(email: string): Promise<void> {
+  if (!auth) throw new Error('Firebase Authentication is not available.');
+  await sendPasswordResetEmail(auth, email.trim());
+}
 
 // Single designated Admin Email from env or fallback
 export const DESIGNATED_ADMIN_EMAIL = (
@@ -252,27 +287,92 @@ export async function toggleEmployeeStatus(uid: string, currentStatus: 'Active' 
 }
 
 /**
- * Record a new check-in
+ * Record a new check-in with Device Signature & Anti-Proxy Collision Detection
  */
 export async function recordCheckIn(record: AttendanceRecord): Promise<string> {
+  const sig = getDeviceSignature();
+  const todayStr = record.date || new Date().toISOString().split('T')[0];
+
+  const enrichedRecord: AttendanceRecord = {
+    ...record,
+    deviceId: sig.deviceId,
+    deviceModel: sig.deviceModel,
+    deviceBrowser: sig.deviceBrowser,
+    deviceOs: sig.deviceOs,
+    deviceLabel: sig.deviceLabel,
+    isSharedDevice: false,
+    timestamp: Date.now(),
+  };
+
   if (db) {
     try {
-      const col = collection(db, 'attendance');
-      const docRef = await addDoc(col, {
-        ...record,
-        timestamp: Date.now(),
+      // Cross-worker collision check: Did another user check in with this physical phone today?
+      const q = query(
+        collection(db, 'attendance'),
+        where('date', '==', todayStr),
+        where('deviceId', '==', sig.deviceId)
+      );
+      const snap = await getDocs(q);
+      const otherDoc = snap.docs.find(d => {
+        const data = d.data();
+        return (data.userId || data.employeeId) !== (record.userId || record.employeeId);
       });
+
+      if (otherDoc) {
+        const colliding = otherDoc.data() as AttendanceRecord;
+        enrichedRecord.isSharedDevice = true;
+        enrichedRecord.sharedWithEmployeeName = colliding.name || 'Another Employee';
+
+        // Flag the earlier check-in as well so both records display the shared device warning
+        await updateDoc(otherDoc.ref, {
+          isSharedDevice: true,
+          sharedWithEmployeeName: record.name || 'Another Employee',
+        });
+      }
+
+      const col = collection(db, 'attendance');
+      const docRef = await addDoc(col, enrichedRecord);
+
+      if (record.userId) {
+        saveUserProfile(record.userId, {
+          lastDeviceId: sig.deviceId,
+          lastDeviceLabel: sig.deviceLabel,
+        });
+      }
+
       return docRef.id;
     } catch (e) {
       console.warn('Error saving attendance to Firestore, using local storage:', e);
     }
   }
 
+  // Local storage fallback
   const local = getLocalAttendance();
+  const localCollision = local.find(r => 
+    (r.date === todayStr || r.date === 'Today') && 
+    r.deviceId === sig.deviceId && 
+    (r.userId || r.employeeId) !== (record.userId || record.employeeId)
+  );
+
+  if (localCollision) {
+    enrichedRecord.isSharedDevice = true;
+    enrichedRecord.sharedWithEmployeeName = localCollision.name || 'Another Employee';
+    localCollision.isSharedDevice = true;
+    localCollision.sharedWithEmployeeName = record.name || 'Another Employee';
+  }
+
   const newId = `att_${Date.now()}`;
-  const newRecord = { ...record, id: newId, timestamp: Date.now() };
-  local.unshift(newRecord);
+  enrichedRecord.id = newId;
+  local.unshift(enrichedRecord);
   saveLocalAttendance(local);
+
+  if (record.userId) {
+    saveUserProfile(record.userId, {
+      lastDeviceId: sig.deviceId,
+      lastDeviceLabel: sig.deviceLabel,
+    });
+  }
+
   return newId;
 }
 

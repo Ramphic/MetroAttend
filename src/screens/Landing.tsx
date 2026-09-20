@@ -4,9 +4,19 @@ import { useAuth } from '../context/AuthContext';
 import Logo from '../components/Logo';
 
 export default function Landing({ nav }: { nav: NavProps }) {
-  const { signInWithGoogle, isConfigured } = useAuth();
+  const { signInWithGoogle, signInWithEmail, sendPasswordReset, isConfigured } = useAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Forgot password modal state
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotSuccess, setForgotSuccess] = useState(false);
+  const [forgotError, setForgotError] = useState<string | null>(null);
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
@@ -26,6 +36,52 @@ export default function Landing({ nav }: { nav: NavProps }) {
     }
   };
 
+  const handleEmailSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim() || !password) {
+      setError('Please enter both your email address and password.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const { isNewUser } = await signInWithEmail(email.trim(), password, 'employee');
+      if (isNewUser) {
+        nav.navigate('profile-setup');
+      } else {
+        nav.navigate('dashboard');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError(err?.message || 'Sign in failed. Check your email and password.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSendResetEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmail.trim()) {
+      setForgotError('Please enter your registered email address.');
+      return;
+    }
+    setForgotLoading(true);
+    setForgotError(null);
+    try {
+      await sendPasswordReset(forgotEmail.trim());
+      setForgotSuccess(true);
+      setTimeout(() => {
+        setForgotSuccess(false);
+        setShowForgotModal(false);
+        setForgotEmail('');
+      }, 3000);
+    } catch (err: any) {
+      setForgotError(err?.message || 'Failed to send reset email.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-navy-dark flex flex-col overflow-hidden relative">
       {/* Background pattern */}
@@ -39,9 +95,9 @@ export default function Landing({ nav }: { nav: NavProps }) {
       <div className="absolute bottom-0 left-0 w-80 h-80 bg-navy-mid rounded-full blur-3xl opacity-40 translate-y-1/2 -translate-x-1/4" />
 
       {/* Header */}
-      <div className="relative z-10 p-8 pt-12 flex items-start justify-between">
+      <div className="relative z-10 p-6 sm:p-8 pt-8 sm:pt-12 flex items-start justify-between">
         <div>
-          <div className="text-white/40 text-xs font-mono tracking-widest uppercase mb-2">MetroWorks Infrastructure Services</div>
+          <div className="text-white/40 text-[10px] sm:text-xs font-mono tracking-widest uppercase mb-1.5">MetroWorks Infrastructure Services</div>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-white p-1 shadow-sm flex items-center justify-center flex-shrink-0">
               <Logo size={32} />
@@ -51,58 +107,30 @@ export default function Landing({ nav }: { nav: NavProps }) {
         </div>
       </div>
 
-      {/* Hero */}
-      <div className="relative z-10 flex-1 flex flex-col justify-center px-8 pb-8">
-        {/* Visual */}
-        <div className="mb-10 flex justify-center">
-          <div className="relative max-w-sm w-full bg-white/10 backdrop-blur-md rounded-3xl border border-white/20 p-5 shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-white/10">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-white p-1 flex items-center justify-center">
-                  <Logo size={24} />
-                </div>
-                <div>
-                  <div className="text-white text-xs font-display font-bold">MetroWorks Main Office</div>
-                  <div className="text-white/60 text-[10px] font-mono">Geofence Perimeter Active</div>
-                </div>
+      {/* Hero & Login Card */}
+      <div className="relative z-10 flex-1 flex flex-col justify-center px-4 sm:px-8 pb-10 max-w-md w-full mx-auto">
+        {/* Visual Badge */}
+        <div className="mb-6 flex justify-center">
+          <div className="w-full bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 p-4 shadow-xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-white text-xs font-display font-bold">Office Geofence Active</span>
               </div>
-              <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Live GPS
+              <span className="text-emerald-300 text-[10px] font-mono font-bold bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                GPS Ready
               </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2.5 my-3.5">
-              <div className="bg-white/10 rounded-2xl p-3 border border-white/10">
-                <div className="text-white/60 text-[9px] font-mono uppercase">Check-In Open</div>
-                <div className="text-white text-sm font-display font-bold mt-0.5">Flexible Hours</div>
-                <div className="text-emerald-300 text-[9px] font-mono mt-0.5">Early & late supported</div>
-              </div>
-              <div className="bg-white/10 rounded-2xl p-3 border border-white/10">
-                <div className="text-white/60 text-[9px] font-mono uppercase">Verification</div>
-                <div className="text-white text-sm font-display font-bold mt-0.5">Satellite GPS</div>
-                <div className="text-blue-200 text-[9px] font-mono mt-0.5">Within 100m radius</div>
-              </div>
-            </div>
-
-            <div className="bg-emerald-500/15 border border-emerald-500/20 rounded-xl px-3 py-2 flex items-center justify-between">
-              <span className="text-white text-xs font-display font-semibold flex items-center gap-2">
-                <span>📱</span> Official Mobile PWA Ready
-              </span>
-              <span className="text-emerald-300 text-[10px] font-mono font-bold">iOS & Android</span>
             </div>
           </div>
         </div>
 
         {/* Copy */}
-        <div className="text-center mb-8">
-          <div className="text-white/50 text-xs font-mono tracking-widest uppercase mb-3">Digital Attendance System</div>
-          <h1 className="text-white text-3xl font-display font-800 leading-tight mb-3">
-            Attendance,<br />
-            <span className="text-white/60">verified & simple.</span>
+        <div className="text-center mb-6">
+          <h1 className="text-white text-2xl sm:text-3xl font-display font-800 leading-tight mb-2">
+            Workforce Attendance
           </h1>
-          <p className="text-white/50 text-sm leading-relaxed max-w-xs mx-auto">
-            Securely sign in with your Google account, verify workplace GPS, and track your daily work logs.
+          <p className="text-white/50 text-xs sm:text-sm leading-relaxed">
+            Verify workplace presence and manage your daily check-in logs.
           </p>
         </div>
 
@@ -112,15 +140,16 @@ export default function Landing({ nav }: { nav: NavProps }) {
           </div>
         )}
 
-        {/* CTA with Google Sign-in */}
-        <div className="space-y-3">
+        {/* Dual Authentication Card */}
+        <div className="bg-white/10 backdrop-blur-md rounded-3xl p-5 sm:p-6 border border-white/20 shadow-2xl space-y-4">
+          {/* 1. Google 1-Click Sign-in */}
           <button
+            type="button"
             onClick={handleGoogleSignIn}
             disabled={loading}
-            className="w-full bg-white text-navy-dark py-4 px-5 rounded-2xl font-display font-700 text-base transition-all hover:bg-white/95 active:scale-[0.98] shadow-xl flex items-center justify-center gap-3"
+            className="w-full bg-white text-navy-dark py-3.5 px-4 rounded-xl font-display font-bold text-sm transition-all hover:bg-white/95 active:scale-[0.98] shadow-md flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-60"
           >
-            {/* Google Logo SVG */}
-            <svg width="20" height="20" viewBox="0 0 24 24">
+            <svg width="18" height="18" viewBox="0 0 24 24">
               <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
               <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
               <path fill="#FBBC05" d="M5.28 14.27A7.2 7.2 0 014.9 12c0-.79.14-1.57.38-2.27V6.58H1.25A11.95 11.95 0 000 12c0 1.92.45 3.74 1.25 5.42l4.03-3.15z"/>
@@ -129,19 +158,89 @@ export default function Landing({ nav }: { nav: NavProps }) {
             {loading ? 'Authenticating…' : 'Continue with Google'}
           </button>
 
-          <button
-            onClick={() => nav.navigate('register')}
-            className="w-full bg-white/10 text-white py-3.5 rounded-2xl font-display font-600 text-sm border border-white/20 transition-all hover:bg-white/15"
-          >
-            Create Staff Account
-          </button>
+          {/* Divider */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-white/20" />
+            <span className="text-white/40 text-[10px] font-mono tracking-wider uppercase">or with email</span>
+            <div className="flex-1 h-px bg-white/20" />
+          </div>
+
+          {/* 2. Email & Password Form */}
+          <form onSubmit={handleEmailSignIn} className="space-y-3">
+            <div>
+              <label className="block text-white/70 text-[11px] font-mono uppercase tracking-wider mb-1">
+                Email Address
+              </label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="staff@metroworks.gov.gh"
+                className="w-full bg-white/10 border border-white/20 rounded-xl px-3.5 py-2.5 text-white placeholder-white/30 text-xs font-display focus:outline-none focus:ring-2 focus:ring-white/40"
+              />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-white/70 text-[11px] font-mono uppercase tracking-wider">
+                  Password
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowForgotModal(true)}
+                  className="text-blue-300 hover:text-blue-200 text-[10px] font-display transition-colors"
+                >
+                  Forgot?
+                </button>
+              </div>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="Enter your password"
+                  className="w-full bg-white/10 border border-white/20 rounded-xl px-3.5 py-2.5 pr-10 text-white placeholder-white/30 text-xs font-display focus:outline-none focus:ring-2 focus:ring-white/40"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white text-xs cursor-pointer"
+                  tabIndex={-1}
+                >
+                  {showPassword ? '🙈' : '👁'}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 px-4 rounded-xl font-display font-bold text-xs transition-all shadow-md active:scale-[0.98] disabled:opacity-60 cursor-pointer"
+            >
+              {loading ? 'Signing in…' : 'Sign In with Email'}
+            </button>
+          </form>
+
+          {/* Create Account Link */}
+          <div className="pt-1 text-center">
+            <button
+              type="button"
+              onClick={() => nav.navigate('register')}
+              className="w-full bg-white/5 hover:bg-white/10 text-white/90 py-2.5 rounded-xl font-display font-semibold text-xs border border-white/10 transition-colors"
+            >
+              New staff member? Create Account
+            </button>
+          </div>
         </div>
 
         {/* Discreet Admin Entry */}
-        <div className="mt-8 text-center">
+        <div className="mt-6 text-center">
           <button
+            type="button"
             onClick={() => nav.navigate('admin-login')}
-            className="text-white/30 text-[11px] font-mono hover:text-white/60 transition-colors uppercase tracking-widest"
+            className="text-white/30 text-[11px] font-mono hover:text-white/60 transition-colors uppercase tracking-widest cursor-pointer"
           >
             Administrator Console →
           </button>
@@ -152,6 +251,66 @@ export default function Landing({ nav }: { nav: NavProps }) {
           )}
         </div>
       </div>
+
+      {/* Forgot Password Modal */}
+      {showForgotModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200">
+            <div className="w-12 h-12 rounded-2xl bg-navy-50 text-navy flex items-center justify-center text-xl mx-auto mb-3 font-bold">
+              🔑
+            </div>
+            <h3 className="text-base font-display font-800 text-slate-900 text-center mb-1">
+              Reset Your Password
+            </h3>
+            <p className="text-slate-500 text-xs text-center mb-4 leading-relaxed">
+              Enter your work email address and we'll send you a password recovery link.
+            </p>
+
+            {forgotSuccess ? (
+              <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs p-3 rounded-xl text-center mb-4 font-display font-semibold">
+                ✓ Reset instructions sent! Please check your inbox.
+              </div>
+            ) : (
+              <form onSubmit={handleSendResetEmail} className="space-y-3">
+                {forgotError && (
+                  <div className="bg-red-50 text-red-600 text-[11px] p-2.5 rounded-lg text-center">
+                    {forgotError}
+                  </div>
+                )}
+                <div>
+                  <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1 font-bold">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={forgotEmail}
+                    onChange={e => setForgotEmail(e.target.value)}
+                    placeholder="staff@metroworks.gov.gh"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-border text-slate-900 text-xs font-display focus:outline-none focus:ring-2 focus:ring-navy/20"
+                  />
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => { setShowForgotModal(false); setForgotError(null); }}
+                    className="flex-1 py-2.5 rounded-xl border border-border text-slate-600 font-display font-bold text-xs hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={forgotLoading}
+                    className="flex-1 py-2.5 rounded-xl bg-navy text-white font-display font-bold text-xs hover:bg-navy-dark transition-all disabled:opacity-60"
+                  >
+                    {forgotLoading ? 'Sending…' : 'Send Link'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

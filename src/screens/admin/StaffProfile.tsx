@@ -296,6 +296,7 @@ export default function StaffProfile({ nav }: { nav: NavProps }) {
                 { label: 'Supervisor', value: emp.supervisor },
                 { label: 'Email', value: emp.email },
                 { label: 'Phone', value: emp.phone },
+                { label: 'Device ID / Phone', value: emp.lastDeviceLabel || 'Not recorded yet' },
               ].map(item => (
                 <div key={item.label} className="flex justify-between items-center py-1.5 border-b border-slate-50 last:border-0">
                   <div className="text-[10px] font-mono text-muted uppercase tracking-wide">{item.label}</div>
@@ -343,7 +344,19 @@ export default function StaffProfile({ nav }: { nav: NavProps }) {
                         record.status === 'Present' ? 'bg-success' : record.status === 'Late' ? 'bg-amber-500' : 'bg-red-500'
                       }`} />
                       <div>
-                        <div className="text-xs font-display font-bold text-slate-800">{record.date}</div>
+                        <div className="text-xs font-display font-bold text-slate-800 flex items-center gap-2">
+                          <span>{record.date}</span>
+                          {record.deviceLabel && (
+                            <span className="text-[10px] font-mono text-slate-500 font-normal">
+                              • {record.deviceLabel}
+                            </span>
+                          )}
+                          {record.isSharedDevice && (
+                            <span className="text-[9px] font-display font-bold text-amber-800 bg-amber-100 border border-amber-300 px-1.5 py-0.2 rounded">
+                              🚨 Shared Phone
+                            </span>
+                          )}
+                        </div>
                         <div className="text-[10px] font-mono text-muted flex items-center gap-2">
                           <span>{record.dayLabel}</span>
                           {record.locationVerified && (

@@ -13,6 +13,7 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [statusFilter, setStatusFilter] = useState<AttendanceStatus | 'All'>('All');
   const [deptFilter, setDeptFilter] = useState('All');
+  const [onlyFlaggedDevices, setOnlyFlaggedDevices] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [editingRow, setEditingRow] = useState<AttendanceRecord | null>(null);
   const [savingStatus, setSavingStatus] = useState(false);
@@ -33,13 +34,15 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
     const matchStatus = statusFilter === 'All' || row.status === statusFilter;
     const matchDept = deptFilter === 'All' || (row.department || 'Operations') === deptFilter;
     const matchDate = !selectedDate || row.date === selectedDate || row.date === 'Today';
-    return matchStatus && matchDept && matchDate;
+    const matchFlagged = !onlyFlaggedDevices || Boolean(row.isSharedDevice);
+    return matchStatus && matchDept && matchDate && matchFlagged;
   });
 
   const presentCount = filtered.filter(r => r.status === 'Present').length;
   const lateCount = filtered.filter(r => r.status === 'Late').length;
   const absentCount = filtered.filter(r => r.status === 'Absent').length;
   const locationVerifiedCount = filtered.filter(r => r.locationVerified).length;
+  const sharedDeviceCount = records.filter(r => r.isSharedDevice).length;
 
   const handleUpdateStatus = async (recordId: string, newStatus: AttendanceStatus) => {
     setSavingStatus(true);
@@ -111,6 +114,24 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
                 {s}
               </button>
             ))}
+
+            {/* Anti-Proxy / Shared Device filter toggle */}
+            <button
+              onClick={() => setOnlyFlaggedDevices(prev => !prev)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-display font-bold transition-all flex items-center gap-1.5 ${
+                onlyFlaggedDevices
+                  ? 'bg-amber-500 text-white shadow-xs'
+                  : 'bg-surface text-amber-800 border border-amber-300 hover:bg-amber-50'
+              }`}
+            >
+              <span>🚨</span>
+              <span>Shared Devices</span>
+              {sharedDeviceCount > 0 && (
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${onlyFlaggedDevices ? 'bg-amber-700 text-white' : 'bg-amber-200 text-amber-900 font-bold'}`}>
+                  {sharedDeviceCount}
+                </span>
+              )}
+            </button>
           </div>
 
           {/* Dept filter */}
@@ -148,7 +169,7 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
           <table className="w-full">
             <thead>
               <tr className="border-b border-slate-100 bg-surface">
-                {['Staff Member', 'Category', 'Check-in', 'Check-out', 'Location Verification', 'Status', 'Actions'].map(h => (
+                {['Staff Member', 'Category', 'Check-in', 'Check-out', 'Location Verification', 'Device & Security', 'Status', 'Actions'].map(h => (
                   <th key={h} className="text-left text-[10px] font-display font-700 text-slate-400 uppercase tracking-wide px-5 py-3.5">{h}</th>
                 ))}
               </tr>
@@ -199,6 +220,22 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
                         Failed
                       </span>
                     )}
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs font-display font-medium text-slate-700 flex items-center gap-1.5">
+                        {row.deviceLabel || '📱 Mobile Device'}
+                      </span>
+                      {row.isSharedDevice ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-display font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md w-fit">
+                          🚨 Shared with {row.sharedWithEmployeeName || 'Another Worker'}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[9px] font-mono text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded w-fit">
+                          🔒 Personal Device
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-5 py-3.5">
                     <span className={`text-[10px] font-display font-700 px-2.5 py-1 rounded-full uppercase ${getStatusColor(row.status)}`}>

@@ -132,6 +132,8 @@ export default function AdminDashboard({ nav }: { nav: NavProps }) {
     }, 1500);
   };
 
+  const sharedDeviceCount = records.filter(r => r.isSharedDevice).length;
+
   return (
     <AdminShell nav={nav}>
       {/* Page title & Actions */}
@@ -154,6 +156,23 @@ export default function AdminDashboard({ nav }: { nav: NavProps }) {
           </div>
         </div>
       </div>
+
+      {/* Anti-Proxy Shared Device Warning Banner */}
+      {sharedDeviceCount > 0 && (
+        <div className="mb-6 bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 flex items-start gap-3.5 shadow-xs">
+          <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-900 flex items-center justify-center text-xl flex-shrink-0">
+            🚨
+          </div>
+          <div>
+            <h3 className="text-sm font-display font-bold text-amber-900">
+              Anti-Proxy Alert: {sharedDeviceCount} Shared Device Check-In{sharedDeviceCount > 1 ? 's' : ''} Detected Today
+            </h3>
+            <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
+              Multiple employees used the exact same physical phone/browser to clock in. Look for the highlighted <span className="font-bold text-red-700 bg-red-100 px-1.5 py-0.5 rounded">Shared Device</span> badges in the live stream below.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
@@ -277,7 +296,7 @@ export default function AdminDashboard({ nav }: { nav: NavProps }) {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-slate-100">
-                  {['Staff Member', 'Category', 'Department', 'Check-in', 'Check-out', 'Location Verification', 'Status'].map(h => (
+                  {['Staff Member', 'Category', 'Department', 'Check-in', 'Check-out', 'Location Verification', 'Device & Security', 'Status'].map(h => (
                     <th key={h} className="text-left text-[10px] font-display font-700 text-slate-400 uppercase tracking-wide px-5 py-3">{h}</th>
                   ))}
                 </tr>
@@ -322,6 +341,22 @@ export default function AdminDashboard({ nav }: { nav: NavProps }) {
                       ) : (
                         <span className="text-danger text-[10px] font-display font-600">Failed</span>
                       )}
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-xs font-display font-medium text-slate-700 flex items-center gap-1.5">
+                          {row.deviceLabel || '📱 Mobile Device'}
+                        </span>
+                        {row.isSharedDevice ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-display font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md w-fit">
+                            🚨 Shared with {row.sharedWithEmployeeName || 'Another Worker'}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-mono text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded w-fit">
+                            🔒 Personal Device
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-5 py-3.5">
                       <span className={`text-[10px] font-display font-700 px-2.5 py-1 rounded-full uppercase ${getStatusColor(row.status)}`}>
