@@ -44,6 +44,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Initialize auth state
   useEffect(() => {
+    try {
+      const u = localStorage.getItem('metroattend_users');
+      if (u && u.includes('Kwame Mensah')) localStorage.removeItem('metroattend_users');
+      const a = localStorage.getItem('metroattend_attendance');
+      if (a && a.includes('Kwame Mensah')) localStorage.removeItem('metroattend_attendance');
+      const d = localStorage.getItem('metroattend_demo_user');
+      if (d && d.includes('Kwame Mensah')) localStorage.removeItem('metroattend_demo_user');
+    } catch {}
+
     if (isFirebaseConfigured && auth) {
       const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
         setUser(firebaseUser);

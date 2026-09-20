@@ -12,11 +12,8 @@ export default function Landing({ nav }: { nav: NavProps }) {
     setLoading(true);
     setError(null);
     try {
-      const { isNewUser, isAdmin } = await signInWithGoogle('employee');
-      if (isAdmin) {
-        nav.setAdminTab('dashboard');
-        nav.navigate('admin-dashboard');
-      } else if (isNewUser) {
+      const { isNewUser } = await signInWithGoogle('employee');
+      if (isNewUser) {
         nav.navigate('profile-setup');
       } else {
         nav.navigate('dashboard');
@@ -137,18 +134,6 @@ export default function Landing({ nav }: { nav: NavProps }) {
             className="w-full bg-white/10 text-white py-3.5 rounded-2xl font-display font-600 text-sm border border-white/20 transition-all hover:bg-white/15"
           >
             Create Staff Account
-          </button>
-
-          <button
-            onClick={() => {
-              nav.onAdminBypass?.();
-              nav.setAdminTab('dashboard');
-              nav.navigate('admin-dashboard');
-            }}
-            className="w-full bg-blue-500/20 hover:bg-blue-500/30 text-blue-100 border border-blue-400/30 py-3.5 rounded-2xl font-display font-semibold text-sm transition-all flex items-center justify-center gap-2"
-          >
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            Open Admin Dashboard
           </button>
         </div>
 

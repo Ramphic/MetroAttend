@@ -20,11 +20,7 @@ export default function Register({ nav }: { nav: NavProps }) {
     setLoading(true);
     setError(null);
     try {
-      const { isAdmin } = await signInWithGoogle('employee');
-      if (isAdmin) {
-        nav.setAdminTab('dashboard');
-        nav.navigate('admin-dashboard');
-      }
+      await signInWithGoogle('employee');
     } catch (err: any) {
       setError(err?.message || 'Failed to authenticate with Google');
     } finally {

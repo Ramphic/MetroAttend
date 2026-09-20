@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { NavProps, AttendanceRecord, Employee, StaffCategory } from '../../types';
 import AdminShell from '../../components/AdminShell';
-import { weeklyTrend, getStatusColor, getCategoryColor } from '../../data';
+import { getStatusColor, getCategoryColor } from '../../data';
 import { 
   subscribeTodayAttendance, 
   getAllEmployees, 
-  sendBroadcastAnnouncement,
+  getAllAttendanceRecords, 
+  sendBroadcastAnnouncement, 
   exportRecordsToCSV 
 } from '../../lib/firebase';
 import {
@@ -23,6 +24,7 @@ interface CategoryMetric {
 export default function AdminDashboard({ nav }: { nav: NavProps }) {
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [historyRecords, setHistoryRecords] = useState<AttendanceRecord[]>([]);
   const [broadcastOpen, setBroadcastOpen] = useState(false);
   const [announcementTitle, setAnnouncementTitle] = useState('');
   const [announcementBody, setAnnouncementBody] = useState('');
@@ -41,28 +43,33 @@ export default function AdminDashboard({ nav }: { nav: NavProps }) {
       setEmployees(list);
     });
 
+    // 3. Fetch all attendance history for weekly velocity
+    getAllAttendanceRecords().then(all => {
+      setHistoryRecords(all);
+    });
+
     return () => unsubscribe();
   }, []);
 
-  const totalStaffCount = employees.length > 0 ? employees.length : 126;
+  const totalStaffCount = employees.length;
   const today = new Date();
   const dateStr = today.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
   const presentCount = records.filter(r => r.status === 'Present').length;
   const lateCount = records.filter(r => r.status === 'Late').length;
   const absentCount = records.filter(r => r.status === 'Absent').length;
-  const attendanceRate = totalStaffCount > 0 ? (((presentCount + lateCount) / totalStaffCount) * 100).toFixed(1) : '85.7';
+  const attendanceRate = totalStaffCount > 0 ? (((presentCount + lateCount) / totalStaffCount) * 100).toFixed(1) : '0';
 
   // Dynamic Category Metrics
-  const categoriesList: { key: StaffCategory; label: string; color: string; fallbackTotal: number }[] = [
-    { key: 'Permanent Staff', label: 'Permanent Staff', color: 'bg-navy', fallbackTotal: 60 },
-    { key: 'National Service Personnel', label: 'National Service', color: 'bg-purple-500', fallbackTotal: 22 },
-    { key: 'Intern', label: 'Interns', color: 'bg-amber-500', fallbackTotal: 28 },
-    { key: 'Contract Staff', label: 'Contract Staff', color: 'bg-slate-500', fallbackTotal: 16 },
+  const categoriesList: { key: StaffCategory; label: string; color: string }[] = [
+    { key: 'Permanent Staff', label: 'Permanent Staff', color: 'bg-navy' },
+    { key: 'National Service Personnel', label: 'National Service', color: 'bg-purple-500' },
+    { key: 'Intern', label: 'Interns', color: 'bg-amber-500' },
+    { key: 'Contract Staff', label: 'Contract Staff', color: 'bg-slate-500' },
   ];
 
   const categoryMetrics: CategoryMetric[] = categoriesList.map(c => {
-    const total = employees.filter(e => e.category === c.key).length || c.fallbackTotal;
+    const total = employees.filter(e => e.category === c.key).length;
     const checked = records.filter(r => r.category === c.key).length;
     return {
       key: c.key,
@@ -72,6 +79,36 @@ export default function AdminDashboard({ nav }: { nav: NavProps }) {
       color: c.color,
     };
   });
+
+  // Dynamic Weekly Velocity Calculation
+  const weeklyTrendData = React.useMemo(() => {
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+    const currentDayIdx = new Date().getDay();
+
+    return days.map((day, idx) => {
+      const dayNum = idx + 1;
+      const dayRecords = [...historyRecords, ...records].filter(r => {
+        if (!r.date) return false;
+        const d = new Date(r.date);
+        return d.getDay() === dayNum;
+      });
+
+      const p = dayRecords.filter(r => r.status === 'Present').length;
+      const l = dayRecords.filter(r => r.status === 'Late').length;
+      const a = dayRecords.filter(r => r.status === 'Absent').length;
+
+      if (dayNum === currentDayIdx) {
+        return {
+          day,
+          present: Math.max(p, presentCount),
+          late: Math.max(l, lateCount),
+          absent: Math.max(a, absentCount),
+        };
+      }
+
+      return { day, present: p, late: l, absent: a };
+    });
+  }, [historyRecords, records, presentCount, lateCount, absentCount]);
 
   const statCards = [
     { label: 'Total Registered Staff', value: totalStaffCount, icon: '👥', color: 'bg-navy-50 text-navy', trend: 'Active roster' },
@@ -150,7 +187,7 @@ export default function AdminDashboard({ nav }: { nav: NavProps }) {
             </div>
           </div>
           <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={weeklyTrend} barSize={20} barGap={4}>
+            <BarChart data={weeklyTrendData} barSize={20} barGap={4}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false}/>
               <XAxis dataKey="day" tick={{ fontSize: 11, fontFamily: 'JetBrains Mono', fill: '#94A3B8' }} axisLine={false} tickLine={false}/>
               <YAxis tick={{ fontSize: 10, fontFamily: 'JetBrains Mono', fill: '#94A3B8' }} axisLine={false} tickLine={false}/>
@@ -225,66 +262,78 @@ export default function AdminDashboard({ nav }: { nav: NavProps }) {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-slate-100">
-                {['Staff Member', 'Category', 'Department', 'Check-in', 'Check-out', 'Location Verification', 'Status'].map(h => (
-                  <th key={h} className="text-left text-[10px] font-display font-700 text-slate-400 uppercase tracking-wide px-5 py-3">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {records.slice(0, 10).map((row, i) => (
-                <tr
-                  key={row.id || i}
-                  className="border-b border-slate-50 last:border-0 hover:bg-surface transition-colors cursor-pointer"
-                  onClick={() => { 
-                    if (row.employeeId) nav.setSelectedEmployeeId(row.employeeId); 
-                    nav.setAdminTab('staff'); 
-                    nav.navigate('admin-staff-profile'); 
-                  }}
-                >
-                  <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-2.5">
-                      {row.photoURL ? (
-                        <img src={row.photoURL} alt={row.name || 'SM'} className="w-7 h-7 rounded-full object-cover border border-navy/20 flex-shrink-0" />
-                      ) : (
-                        <div className="w-7 h-7 rounded-full bg-navy-50 border border-navy/10 flex items-center justify-center text-navy text-[10px] font-display font-800 flex-shrink-0">
-                          {(row.name || 'SM').split(' ').map(n => n[0]).join('').slice(0, 2)}
-                        </div>
-                      )}
-                      <span className="text-sm font-display font-600 text-slate-800">{row.name || 'Staff Member'}</span>
-                    </div>
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <span className={`text-[10px] font-display font-600 px-2 py-0.5 rounded-full ${getCategoryColor(row.category || 'Permanent Staff')}`}>
-                      {row.category || 'Permanent Staff'}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5 text-xs font-display font-500 text-slate-600">{row.department || 'Operations'}</td>
-                  <td className="px-5 py-3.5 text-xs font-mono text-slate-700">{row.checkIn}</td>
-                  <td className="px-5 py-3.5 text-xs font-mono text-slate-400">{row.checkOut}</td>
-                  <td className="px-5 py-3.5">
-                    {row.locationVerified ? (
-                      <span className="text-success text-[10px] font-display font-600 flex items-center gap-1">
-                        <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-                        GPS Verified {row.distanceMeters ? `(~${row.distanceMeters}m)` : ''}
-                      </span>
-                    ) : (
-                      <span className="text-danger text-[10px] font-display font-600">Failed</span>
-                    )}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <span className={`text-[10px] font-display font-700 px-2.5 py-1 rounded-full uppercase ${getStatusColor(row.status)}`}>
-                      {row.status}
-                    </span>
-                  </td>
+        {records.length === 0 ? (
+          <div className="py-16 text-center text-slate-400">
+            <div className="w-12 h-12 rounded-2xl bg-surface border border-border flex items-center justify-center mx-auto mb-3 text-xl">
+              ⏱
+            </div>
+            <div className="text-sm font-display font-bold text-slate-700">No Check-ins Recorded Today</div>
+            <p className="text-xs text-muted mt-1 max-w-sm mx-auto">
+              Real-time attendance logs will appear here as employees check in within the workplace geofence perimeter.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  {['Staff Member', 'Category', 'Department', 'Check-in', 'Check-out', 'Location Verification', 'Status'].map(h => (
+                    <th key={h} className="text-left text-[10px] font-display font-700 text-slate-400 uppercase tracking-wide px-5 py-3">{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {records.slice(0, 10).map((row, i) => (
+                  <tr
+                    key={row.id || i}
+                    className="border-b border-slate-50 last:border-0 hover:bg-surface transition-colors cursor-pointer"
+                    onClick={() => { 
+                      if (row.employeeId) nav.setSelectedEmployeeId(row.employeeId); 
+                      nav.setAdminTab('staff'); 
+                      nav.navigate('admin-staff-profile'); 
+                    }}
+                  >
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center gap-2.5">
+                        {row.photoURL ? (
+                          <img src={row.photoURL} alt={row.name || 'SM'} className="w-7 h-7 rounded-full object-cover border border-navy/20 flex-shrink-0" />
+                        ) : (
+                          <div className="w-7 h-7 rounded-full bg-navy-50 border border-navy/10 flex items-center justify-center text-navy text-[10px] font-display font-800 flex-shrink-0">
+                            {(row.name || 'SM').split(' ').map(n => n[0]).join('').slice(0, 2)}
+                          </div>
+                        )}
+                        <span className="text-sm font-display font-600 text-slate-800">{row.name || 'Staff Member'}</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span className={`text-[10px] font-display font-600 px-2 py-0.5 rounded-full ${getCategoryColor(row.category || 'Permanent Staff')}`}>
+                        {row.category || 'Permanent Staff'}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5 text-xs font-display font-500 text-slate-600">{row.department || 'Operations'}</td>
+                    <td className="px-5 py-3.5 text-xs font-mono text-slate-700">{row.checkIn}</td>
+                    <td className="px-5 py-3.5 text-xs font-mono text-slate-400">{row.checkOut}</td>
+                    <td className="px-5 py-3.5">
+                      {row.locationVerified ? (
+                        <span className="text-success text-[10px] font-display font-600 flex items-center gap-1">
+                          <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                          GPS Verified {row.distanceMeters ? `(~${row.distanceMeters}m)` : ''}
+                        </span>
+                      ) : (
+                        <span className="text-danger text-[10px] font-display font-600">Failed</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span className={`text-[10px] font-display font-700 px-2.5 py-1 rounded-full uppercase ${getStatusColor(row.status)}`}>
+                        {row.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Broadcast Announcement Modal */}

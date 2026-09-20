@@ -22,7 +22,6 @@ import {
   Firestore 
 } from 'firebase/firestore';
 import { Employee, AttendanceRecord, WorkplaceSettings, StaffCategory, SystemNotification, AttendanceStatus } from '../types';
-import { employees as initialEmployees, kwameAttendance as initialKwameAttendance, todayAttendance as initialTodayAttendance } from '../data';
 
 // Configuration from environment variables
 const firebaseConfig = {
@@ -117,17 +116,15 @@ const LOCAL_USERS_KEY = 'metroattend_users';
 const LOCAL_ATTENDANCE_KEY = 'metroattend_attendance';
 const LOCAL_SETTINGS_KEY = 'metroattend_settings';
 
-// Initialize local storage seeds if empty
+// Read local storage users
 function getLocalUsers(): Employee[] {
   try {
     const raw = localStorage.getItem(LOCAL_USERS_KEY);
-    if (!raw) {
-      localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(initialEmployees));
-      return initialEmployees;
-    }
-    return JSON.parse(raw);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((u: Employee) => !u.name?.includes('Kwame Mensah')) : [];
   } catch {
-    return initialEmployees;
+    return [];
   }
 }
 
@@ -138,26 +135,9 @@ function saveLocalUsers(users: Employee[]) {
 function getLocalAttendance(): AttendanceRecord[] {
   try {
     const raw = localStorage.getItem(LOCAL_ATTENDANCE_KEY);
-    if (!raw) {
-      const seeded: AttendanceRecord[] = initialTodayAttendance.map((t, idx) => ({
-        id: `att_${idx + 1}`,
-        employeeId: t.employeeId,
-        userId: t.employeeId,
-        name: t.name,
-        category: t.category,
-        department: t.department,
-        date: new Date().toISOString().split('T')[0],
-        dayLabel: 'Today',
-        checkIn: t.checkIn,
-        checkOut: t.checkOut,
-        status: t.status,
-        locationVerified: t.locationVerified,
-        distanceMeters: t.locationVerified ? 43 : 150,
-      }));
-      localStorage.setItem(LOCAL_ATTENDANCE_KEY, JSON.stringify(seeded));
-      return seeded;
-    }
-    return JSON.parse(raw);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((r: AttendanceRecord) => !r.name?.includes('Kwame Mensah')) : [];
   } catch {
     return [];
   }
@@ -436,8 +416,7 @@ export async function getEmployeeAttendance(userId: string): Promise<AttendanceR
 
   const local = getLocalAttendance();
   const filtered = local.filter(r => r.userId === userId || r.employeeId === userId);
-  if (filtered.length > 0) return filtered;
-  return userId === '1' ? initialKwameAttendance : [];
+  return filtered;
 }
 
 /**

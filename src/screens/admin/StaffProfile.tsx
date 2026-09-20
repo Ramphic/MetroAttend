@@ -1,21 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { NavProps, Employee, AttendanceRecord, StaffCategory } from '../../types';
 import AdminShell from '../../components/AdminShell';
-import { employees as initialEmployees, getCategoryColor, getStatusColor } from '../../data';
+import { getCategoryColor, getStatusColor } from '../../data';
 import { 
   getAllEmployees, 
   getEmployeeAttendance, 
   saveUserProfile, 
   toggleEmployeeStatus, 
-  deleteEmployee,
-  exportRecordsToCSV,
+  deleteEmployee, 
+  exportRecordsToCSV, 
   addNotification 
 } from '../../lib/firebase';
 
 export default function StaffProfile({ nav }: { nav: NavProps }) {
-  const [emp, setEmp] = useState<Employee>(() => {
-    return initialEmployees.find(e => e.id === (nav.selectedEmployeeId || '1')) || initialEmployees[0];
-  });
+  const [emp, setEmp] = useState<Employee | null>(null);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -44,18 +42,26 @@ export default function StaffProfile({ nav }: { nav: NavProps }) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const empId = nav.selectedEmployeeId || emp.id || emp.uid || '1';
-
   const loadData = async () => {
     setLoading(true);
     try {
       const list = await getAllEmployees();
-      const found = list.find(e => e.id === empId || e.uid === empId);
+      let found: Employee | undefined;
+      if (nav.selectedEmployeeId) {
+        found = list.find(e => e.id === nav.selectedEmployeeId || e.uid === nav.selectedEmployeeId);
+      }
+      if (!found && list.length > 0) {
+        found = list[0];
+      }
       if (found) {
         setEmp(found);
+        const targetId = found.id || found.uid || '';
+        const userRecords = await getEmployeeAttendance(targetId);
+        setRecords(userRecords);
+      } else {
+        setEmp(null);
+        setRecords([]);
       }
-      const userRecords = await getEmployeeAttendance(empId);
-      setRecords(userRecords);
     } catch (err) {
       console.warn('Error loading staff profile data:', err);
     } finally {
@@ -68,6 +74,7 @@ export default function StaffProfile({ nav }: { nav: NavProps }) {
   }, [nav.selectedEmployeeId]);
 
   const openEditModal = () => {
+    if (!emp) return;
     setEditName(emp.name);
     setEditEmail(emp.email);
     setEditPhone(emp.phone);
@@ -82,7 +89,9 @@ export default function StaffProfile({ nav }: { nav: NavProps }) {
 
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!emp) return;
     setSavingEdit(true);
+    const targetId = emp.id || emp.uid || '';
     const updated: Partial<Employee> = {
       name: editName,
       email: editEmail,
@@ -94,23 +103,26 @@ export default function StaffProfile({ nav }: { nav: NavProps }) {
       supervisor: editSupervisor,
       status: editStatus,
     };
-    await saveUserProfile(emp.id || emp.uid || empId, updated);
-    setEmp(prev => ({ ...prev, ...updated }));
+    await saveUserProfile(targetId, updated);
+    setEmp(prev => prev ? ({ ...prev, ...updated }) : null);
     setSavingEdit(false);
     setShowEditModal(false);
   };
 
   const handleToggleStatus = async () => {
-    const nextStatus = await toggleEmployeeStatus(emp.id || emp.uid || empId, emp.status);
-    setEmp(prev => ({ ...prev, status: nextStatus }));
+    if (!emp) return;
+    const targetId = emp.id || emp.uid || '';
+    const nextStatus = await toggleEmployeeStatus(targetId, emp.status);
+    setEmp(prev => prev ? ({ ...prev, status: nextStatus }) : null);
   };
 
   const handleSendAlert = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!alertTitle.trim() || !alertBody.trim()) return;
+    if (!emp || !alertTitle.trim() || !alertBody.trim()) return;
     setSendingAlert(true);
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' today';
+    const targetId = emp.id || emp.uid || '';
     await addNotification({
       title: alertTitle,
       body: alertBody,
@@ -118,7 +130,7 @@ export default function StaffProfile({ nav }: { nav: NavProps }) {
       time: timeStr,
       timestamp: Date.now(),
       unread: true,
-      targetUserId: emp.id || emp.uid || empId,
+      targetUserId: targetId,
     });
     setSendingAlert(false);
     setAlertSuccess(true);
@@ -131,12 +143,47 @@ export default function StaffProfile({ nav }: { nav: NavProps }) {
   };
 
   const handleDeleteStaff = async () => {
+    if (!emp) return;
     setDeleting(true);
-    await deleteEmployee(emp.id || emp.uid || empId);
+    const targetId = emp.id || emp.uid || '';
+    await deleteEmployee(targetId);
     setDeleting(false);
     setShowDeleteModal(false);
     nav.navigate('admin-staff');
   };
+
+  if (loading) {
+    return (
+      <AdminShell nav={nav}>
+        <div className="py-24 text-center">
+          <div className="w-8 h-8 border-3 border-navy border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <div className="text-xs font-mono text-muted">Loading employee profile…</div>
+        </div>
+      </AdminShell>
+    );
+  }
+
+  if (!emp) {
+    return (
+      <AdminShell nav={nav}>
+        <div className="bg-white rounded-3xl border border-border p-12 text-center max-w-md mx-auto shadow-sm my-12">
+          <div className="w-16 h-16 rounded-2xl bg-navy-50 text-navy flex items-center justify-center text-2xl mx-auto mb-4 font-bold">
+            👥
+          </div>
+          <h2 className="text-lg font-display font-800 text-slate-900 mb-1">No Staff Member Found</h2>
+          <p className="text-slate-500 text-xs mb-6 leading-relaxed">
+            There are currently no staff profiles to display, or the selected staff member was not found. Select a member from the directory or register a new account.
+          </p>
+          <button
+            onClick={() => nav.navigate('admin-staff')}
+            className="px-5 py-2.5 rounded-xl bg-navy text-white text-xs font-display font-bold hover:bg-navy-dark transition-all shadow-sm"
+          >
+            ← View Staff Directory
+          </button>
+        </div>
+      </AdminShell>
+    );
+  }
 
   const presentCount = records.filter(r => r.status === 'Present').length;
   const lateCount = records.filter(r => r.status === 'Late').length;

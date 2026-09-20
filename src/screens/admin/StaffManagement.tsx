@@ -273,8 +273,14 @@ export default function StaffManagement({ nav }: { nav: NavProps }) {
 
         {filtered.length === 0 && (
           <div className="py-16 text-center">
-            <div className="text-muted text-sm font-display font-500">No employees found</div>
-            <div className="text-slate-400 text-xs font-mono mt-1">Try adjusting your search query or filter pills</div>
+            <div className="text-muted text-sm font-display font-semibold">No employees found</div>
+            <div className="text-slate-400 text-xs font-mono mt-1 mb-4">Add your first organization team member to get started</div>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="px-4 py-2 rounded-xl bg-navy text-white text-xs font-display font-bold hover:bg-navy-dark transition-all shadow-xs"
+            >
+              + Add Staff Member
+            </button>
           </div>
         )}
       </div>
