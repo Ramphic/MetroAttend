@@ -6,6 +6,8 @@ import {
   getWorkplaceSettings, 
   recordCheckOut, 
   cancelCheckOut,
+  recordAbsence,
+  cancelAbsence,
   addNotification, 
   getEmployeeAttendance,
   getNotifications,
@@ -22,6 +24,13 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
   const [cancellingCheckOut, setCancellingCheckOut] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
 
+  // Absence reporting state
+  const [showAbsenceModal, setShowAbsenceModal] = useState(false);
+  const [absenceReason, setAbsenceReason] = useState('Illness / Medical Appointment');
+  const [absenceNote, setAbsenceNote] = useState('');
+  const [reportingAbsence, setReportingAbsence] = useState(false);
+  const [cancellingAbsence, setCancellingAbsence] = useState(false);
+
   const uid = user?.uid || profile?.id || profile?.uid || 'emp_1';
 
   useEffect(() => {
@@ -35,10 +44,13 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
         }
       });
     }
-  }, [uid]);
+  }, [uid, nav.checkInStatus]);
 
   const isCheckedIn = nav.checkInStatus === 'checked-in';
   const isCheckedOut = nav.checkInStatus === 'checked-out';
+  const isAbsent = nav.checkInStatus === 'absent';
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todayRecord = records.find(r => r.date === todayStr || r.date === 'Today');
   const today = new Date();
   const dateStr = today.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -47,6 +59,65 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
     : user?.displayName 
       ? user.displayName.split(' ')[0] 
       : 'Staff Member';
+
+  const handleMarkAbsent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!absenceReason) return;
+    setReportingAbsence(true);
+    try {
+      const name = profile?.name || user?.displayName || 'Staff Member';
+      const category = profile?.category || 'Permanent Staff';
+      const department = profile?.department || 'Operations';
+      const photoURL = profile?.photoURL || user?.photoURL;
+      
+      await recordAbsence(uid, name, category, department, photoURL, absenceReason, absenceNote);
+      nav.setCheckInStatus('absent');
+      nav.setCheckInTime('—');
+      nav.setCheckOutTime('—');
+      await addNotification({
+        title: 'Absence Notice Recorded',
+        body: `You reported absence for today. Reason: ${absenceReason}${absenceNote ? ` (${absenceNote})` : ''}.`,
+        type: 'warning',
+        time: 'Just now',
+        timestamp: Date.now(),
+        unread: true,
+        targetUserId: uid,
+      });
+      const updatedRecords = await getEmployeeAttendance(uid);
+      setRecords(updatedRecords);
+      setShowAbsenceModal(false);
+      setAbsenceNote('');
+    } catch (err) {
+      console.error('Error marking absent:', err);
+    } finally {
+      setReportingAbsence(false);
+    }
+  };
+
+  const handleCancelAbsence = async () => {
+    setCancellingAbsence(true);
+    try {
+      await cancelAbsence(uid);
+      nav.setCheckInStatus('not-checked-in');
+      nav.setCheckInTime('');
+      nav.setCheckOutTime('');
+      await addNotification({
+        title: 'Absence Notice Retracted',
+        body: 'Your absence notice for today has been cancelled. You can now verify GPS location and clock in.',
+        type: 'info',
+        time: 'Just now',
+        timestamp: Date.now(),
+        unread: true,
+        targetUserId: uid,
+      });
+      const updatedRecords = await getEmployeeAttendance(uid);
+      setRecords(updatedRecords);
+    } catch (err) {
+      console.error('Error cancelling absence:', err);
+    } finally {
+      setCancellingAbsence(false);
+    }
+  };
 
   // Real attendance stats computed dynamically
   const presentCount = records.filter(r => r.status === 'Present').length;
@@ -182,13 +253,14 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
               <div>
                 <div className="text-xs font-mono text-muted uppercase tracking-wider mb-0.5">Today's Attendance Status</div>
                 <div className="text-lg font-display font-800 text-slate-800">
-                  {!isCheckedIn && !isCheckedOut && 'Awaiting Daily Check-In'}
+                  {!isCheckedIn && !isCheckedOut && !isAbsent && 'Awaiting Daily Check-In'}
                   {isCheckedIn && 'Currently Clocked In'}
                   {isCheckedOut && 'Workday Completed · Checked Out'}
+                  {isAbsent && 'Absence Reported for Today'}
                 </div>
               </div>
 
-              {!isCheckedIn && !isCheckedOut && (
+              {!isCheckedIn && !isCheckedOut && !isAbsent && (
                 <span className="bg-slate-100 text-slate-500 text-xs font-display font-bold px-3 py-1 rounded-full uppercase tracking-wide">
                   PENDING
                 </span>
@@ -202,6 +274,12 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
               {isCheckedOut && (
                 <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-display font-bold px-3 py-1 rounded-full uppercase tracking-wide">
                   COMPLETE
+                </span>
+              )}
+              {isAbsent && (
+                <span className="bg-red-50 text-red-700 border border-red-200 text-xs font-display font-bold px-3 py-1 rounded-full uppercase tracking-wide flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-red-500" />
+                  ABSENT
                 </span>
               )}
             </div>
@@ -237,32 +315,45 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
               <div className="flex-1 min-w-0">
                 <div className="text-navy text-sm font-display font-bold truncate">{workplace.officeName}</div>
                 <div className="text-navy/60 text-xs font-mono">
-                  {isCheckedIn 
-                    ? 'GPS positioning verified on-site ✓' 
-                    : `Check-in open anytime (Early, regular, or late shifts supported within ${workplace.geofenceRadius}m)`}
+                  {isAbsent
+                    ? 'Absence recorded. If attending work, you can retract notice and check in.'
+                    : isCheckedIn 
+                      ? 'GPS positioning verified on-site ✓' 
+                      : `Check-in open anytime (Early, regular, or late shifts supported within ${workplace.geofenceRadius}m)`}
                 </div>
               </div>
             </div>
 
             {/* Action Buttons */}
-            {!isCheckedIn && !isCheckedOut && (
-              <button
-                onClick={() => nav.navigate('location-verify')}
-                className="w-full bg-navy text-white py-4 rounded-2xl font-display font-bold text-base transition-all hover:bg-navy-dark active:scale-[0.99] shadow-md flex items-center justify-center gap-2"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/>
-                  <circle cx="12" cy="10" r="3"/>
-                </svg>
-                Verify GPS Location & Check In
-              </button>
+            {!isCheckedIn && !isCheckedOut && !isAbsent && (
+              <div className="space-y-3">
+                <button
+                  onClick={() => nav.navigate('location-verify')}
+                  className="w-full bg-navy text-white py-4 rounded-2xl font-display font-bold text-base transition-all hover:bg-navy-dark active:scale-[0.99] shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/>
+                    <circle cx="12" cy="10" r="3"/>
+                  </svg>
+                  Verify GPS Location & Check In
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowAbsenceModal(true)}
+                  className="w-full py-3 px-4 rounded-xl border border-slate-200 hover:border-red-300 hover:bg-red-50/50 text-slate-600 hover:text-red-700 text-xs font-display font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-2xs"
+                >
+                  <span>🗓️</span>
+                  <span>Won't make it to work today? <span className="underline decoration-red-400">Mark as Absent</span></span>
+                </button>
+              </div>
             )}
 
             {isCheckedIn && (
               <button
                 onClick={handleCheckOut}
                 disabled={checkingOut}
-                className="w-full bg-danger text-white py-4 rounded-2xl font-display font-bold text-base transition-all hover:bg-red-700 active:scale-[0.99] shadow-md flex items-center justify-center gap-2 disabled:opacity-60"
+                className="w-full bg-danger text-white py-4 rounded-2xl font-display font-bold text-base transition-all hover:bg-red-700 active:scale-[0.99] shadow-md flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <circle cx="12" cy="12" r="10"/>
@@ -270,6 +361,45 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
                 </svg>
                 {checkingOut ? 'Verifying Location & Checking Out…' : 'Record Daily Check Out'}
               </button>
+            )}
+
+            {/* Absent State Card with Cancel Option */}
+            {isAbsent && (
+              <div className="space-y-4">
+                <div className="w-full bg-red-50 border border-red-200 text-red-900 p-4 sm:p-5 rounded-2xl font-display text-xs sm:text-sm text-left flex items-start gap-3.5 shadow-2xs">
+                  <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center text-xl flex-shrink-0">
+                    🗓️
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-red-950 text-sm sm:text-base">Absence Notice Active Today</div>
+                    <div className="text-red-800 text-xs mt-1 leading-relaxed">
+                      <strong>Reason:</strong> {todayRecord?.absenceReason || 'Self-Reported Absence'}
+                      {todayRecord?.absenceNote ? ` · "${todayRecord.absenceNote}"` : ''}
+                    </div>
+                    <p className="text-[11px] text-red-600/80 font-mono mt-1">
+                      Logged in administrative records. Management has been notified.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Change plans / Cancel absence notice */}
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-display font-bold text-slate-800">Change of plans or attending work after all?</div>
+                    <p className="text-[11px] text-muted">
+                      You can retract your absence notice and proceed to verify GPS location to check in.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCancelAbsence}
+                    disabled={cancellingAbsence}
+                    className="px-4 py-2.5 rounded-xl bg-white border border-navy/30 text-navy font-display font-bold text-xs hover:bg-navy-50 transition-colors shadow-2xs whitespace-nowrap self-start sm:self-auto cursor-pointer disabled:opacity-60"
+                  >
+                    {cancellingAbsence ? 'Cancelling…' : '↩ Cancel Notice & Check In'}
+                  </button>
+                </div>
+              </div>
             )}
 
             {/* Checked Out State with Cancel Check-out Capability */}
@@ -373,6 +503,107 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
                 {cancellingCheckOut ? 'Resuming…' : 'Yes, Resume Shift'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mark as Absent Modal */}
+      {showAbsenceModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-border max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-red-100 text-red-700 flex items-center justify-center text-lg">
+                  🗓️
+                </div>
+                <div>
+                  <h3 className="text-base font-display font-800 text-slate-900">Mark as Absent Today</h3>
+                  <p className="text-xs text-muted">Notify administration that you will not make it to work</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAbsenceModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleMarkAbsent} className="space-y-4">
+              <div>
+                <label className="block text-xs font-display font-bold text-slate-700 mb-2">
+                  Select Reason for Absence <span className="text-red-500">*</span>
+                </label>
+                <div className="space-y-2">
+                  {[
+                    { key: 'Illness / Medical Appointment', label: 'Illness / Medical Appointment', icon: '🩺' },
+                    { key: 'Personal / Family Emergency', label: 'Personal / Family Emergency', icon: '🚨' },
+                    { key: 'Excused Casual Leave', label: 'Excused Casual Leave / Approved Off', icon: '🏖️' },
+                    { key: 'Official Field Assignment', label: 'Official Field Assignment / External Duty', icon: '💼' },
+                    { key: 'Bereavement / Compassionate', label: 'Bereavement / Compassionate Leave', icon: '🕊️' },
+                    { key: 'Other Reason', label: 'Other Reason', icon: '📝' },
+                  ].map(r => (
+                    <label
+                      key={r.key}
+                      className={`flex items-center gap-3 p-3 rounded-xl border text-xs font-display font-semibold cursor-pointer transition-all ${
+                        absenceReason === r.key 
+                          ? 'border-red-500 bg-red-50/60 text-red-900 shadow-2xs' 
+                          : 'border-border bg-surface text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="absenceReason"
+                        value={r.key}
+                        checked={absenceReason === r.key}
+                        onChange={() => setAbsenceReason(r.key)}
+                        className="accent-red-600 w-4 h-4"
+                      />
+                      <span>{r.icon}</span>
+                      <span className="flex-1">{r.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-display font-bold text-slate-700 mb-1">
+                  Additional Note / Explanation <span className="text-slate-400 font-normal">(Optional)</span>
+                </label>
+                <textarea
+                  value={absenceNote}
+                  onChange={e => setAbsenceNote(e.target.value)}
+                  placeholder="e.g. Approved by supervisor, attending clinic in morning..."
+                  rows={2}
+                  className="w-full bg-surface border border-border rounded-xl p-3 text-xs font-display text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-400/20"
+                />
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[11px] text-amber-900 leading-relaxed flex items-start gap-2">
+                <span className="text-sm">ℹ️</span>
+                <div>
+                  This entry will be recorded in the live administrative attendance log. If your plans change later today, you can cancel this notice and clock in.
+                </div>
+              </div>
+
+              <div className="flex gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowAbsenceModal(false)}
+                  className="flex-1 py-3 rounded-xl border border-border text-slate-600 font-display font-bold text-xs hover:bg-surface cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={reportingAbsence}
+                  className="flex-1 py-3 rounded-xl bg-red-600 text-white font-display font-bold text-xs hover:bg-red-700 transition-all shadow-md active:scale-[0.98] disabled:opacity-60 cursor-pointer"
+                >
+                  {reportingAbsence ? 'Submitting…' : 'Submit Absence Notice'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -139,11 +139,15 @@ function MainContent() {
     if (uid) {
       getTodayUserAttendance(uid).then((record) => {
         if (record && record.date === todayStr) {
-          if (record.checkOut && record.checkOut !== '—') {
+          if (record.status === 'Absent') {
+            setCheckInStatus('absent');
+            setCheckInTime('—');
+            setCheckOutTime('—');
+          } else if (record.checkOut && record.checkOut !== '—') {
             setCheckInStatus('checked-out');
             setCheckInTime(record.checkIn);
             setCheckOutTime(record.checkOut);
-          } else if (record.checkIn) {
+          } else if (record.checkIn && record.checkIn !== '—') {
             setCheckInStatus('checked-in');
             setCheckInTime(record.checkIn);
             setCheckOutTime('');

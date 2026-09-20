@@ -17,7 +17,7 @@ export type Screen =
   | 'admin-location'
   | 'admin-settings';
 
-export type CheckInStatus = 'not-checked-in' | 'checked-in' | 'checked-out';
+export type CheckInStatus = 'not-checked-in' | 'checked-in' | 'checked-out' | 'absent';
 export type AttendanceStatus = 'Present' | 'Late' | 'Absent' | 'Pending';
 export type StaffCategory = 'Permanent Staff' | 'National Service Personnel' | 'Intern' | 'Contract Staff';
 export type AdminTab = 'dashboard' | 'attendance' | 'staff' | 'reports' | 'location' | 'settings';
@@ -84,6 +84,8 @@ export interface AttendanceRecord {
   deviceLabel?: string;
   isSharedDevice?: boolean;
   sharedWithEmployeeName?: string;
+  absenceReason?: string;
+  absenceNote?: string;
 }
 
 export interface WorkplaceSettings {

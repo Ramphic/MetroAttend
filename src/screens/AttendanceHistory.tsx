@@ -122,7 +122,13 @@ export default function AttendanceHistory({ nav }: { nav: NavProps }) {
                   <div>
                     <div className="text-sm font-display font-bold text-slate-800">{r.date}</div>
                     <div className="text-xs font-mono text-muted mt-0.5">
-                      Check-in: <span className="text-navy font-semibold">{r.checkIn}</span> · Check-out: <span className="text-slate-600">{r.checkOut}</span>
+                      {r.status === 'Absent' ? (
+                        <span className="text-red-600 font-display font-medium">
+                          Reported Absent{r.absenceReason ? `: ${r.absenceReason}` : ''}
+                        </span>
+                      ) : (
+                        <>Check-in: <span className="text-navy font-semibold">{r.checkIn}</span> · Check-out: <span className="text-slate-600">{r.checkOut}</span></>
+                      )}
                     </div>
                   </div>
                 </div>

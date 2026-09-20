@@ -359,9 +359,16 @@ export default function AdminDashboard({ nav }: { nav: NavProps }) {
                       </div>
                     </td>
                     <td className="px-5 py-3.5">
-                      <span className={`text-[10px] font-display font-700 px-2.5 py-1 rounded-full uppercase ${getStatusColor(row.status)}`}>
-                        {row.status}
-                      </span>
+                      <div className="flex flex-col gap-1">
+                        <span className={`text-[10px] font-display font-700 px-2.5 py-1 rounded-full uppercase w-fit ${getStatusColor(row.status)}`}>
+                          {row.status}
+                        </span>
+                        {row.status === 'Absent' && row.absenceReason && (
+                          <span className="text-[10px] font-mono text-red-600 truncate max-w-[150px]" title={row.absenceReason}>
+                            • {row.absenceReason}
+                          </span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

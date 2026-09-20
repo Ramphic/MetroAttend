@@ -359,6 +359,11 @@ export default function StaffProfile({ nav }: { nav: NavProps }) {
                         </div>
                         <div className="text-[10px] font-mono text-muted flex items-center gap-2">
                           <span>{record.dayLabel}</span>
+                          {record.status === 'Absent' && record.absenceReason && (
+                            <span className="text-red-600 font-semibold text-[10px]">
+                              • Reason: {record.absenceReason}
+                            </span>
+                          )}
                           {record.locationVerified && (
                             <span className="text-emerald-600 font-semibold text-[9px] flex items-center gap-0.5">
                               ✓ GPS ({record.distanceMeters ?? 40}m)

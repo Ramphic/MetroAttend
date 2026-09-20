@@ -441,6 +441,119 @@ export async function cancelCheckOut(userId: string): Promise<void> {
 }
 
 /**
+ * Record an employee self-reported absence
+ */
+export async function recordAbsence(
+  userId: string,
+  userName: string,
+  userCategory: string,
+  userDepartment: string,
+  userPhotoURL: string | undefined,
+  reason: string,
+  note?: string
+): Promise<string> {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const dayLabel = new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+
+  const record: AttendanceRecord = {
+    userId,
+    employeeId: userId,
+    name: userName,
+    category: userCategory,
+    department: userDepartment,
+    photoURL: userPhotoURL,
+    date: todayStr,
+    dayLabel,
+    checkIn: '—',
+    checkOut: '—',
+    status: 'Absent',
+    locationVerified: false,
+    absenceReason: reason,
+    absenceNote: note || '',
+    timestamp: Date.now(),
+  };
+
+  if (db) {
+    try {
+      const q = query(
+        collection(db, 'attendance'),
+        where('userId', '==', userId),
+        where('date', '==', todayStr)
+      );
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const docRef = snap.docs[0].ref;
+        await updateDoc(docRef, {
+          status: 'Absent',
+          checkIn: '—',
+          checkOut: '—',
+          absenceReason: reason,
+          absenceNote: note || '',
+          locationVerified: false,
+        });
+        return docRef.id;
+      } else {
+        const col = collection(db, 'attendance');
+        const docRef = await addDoc(col, record);
+        return docRef.id;
+      }
+    } catch (e) {
+      console.warn('Error recording absence in Firestore, using local storage:', e);
+    }
+  }
+
+  const local = getLocalAttendance();
+  const idx = local.findIndex(r => (r.userId === userId || r.employeeId === userId) && (r.date === todayStr || r.date === 'Today'));
+  if (idx >= 0) {
+    local[idx] = {
+      ...local[idx],
+      status: 'Absent',
+      checkIn: '—',
+      checkOut: '—',
+      absenceReason: reason,
+      absenceNote: note || '',
+      locationVerified: false,
+    };
+    saveLocalAttendance(local);
+    return local[idx].id || `att_${Date.now()}`;
+  } else {
+    const newId = `att_${Date.now()}`;
+    record.id = newId;
+    local.unshift(record);
+    saveLocalAttendance(local);
+    return newId;
+  }
+}
+
+/**
+ * Cancel a self-reported absence so the employee can check in normally
+ */
+export async function cancelAbsence(userId: string): Promise<void> {
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  if (db) {
+    try {
+      const q = query(
+        collection(db, 'attendance'),
+        where('userId', '==', userId),
+        where('date', '==', todayStr)
+      );
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        await deleteDoc(snap.docs[0].ref);
+        return;
+      }
+    } catch (e) {
+      console.warn('Error cancelling absence in Firestore, using local storage:', e);
+    }
+  }
+
+  const local = getLocalAttendance();
+  const filtered = local.filter(r => !((r.userId === userId || r.employeeId === userId) && (r.date === todayStr || r.date === 'Today')));
+  saveLocalAttendance(filtered);
+}
+
+/**
  * Fetch today's verified attendance record for a user
  */
 export async function getTodayUserAttendance(userId: string): Promise<AttendanceRecord | null> {
