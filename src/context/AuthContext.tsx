@@ -50,16 +50,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Initialize auth state
   useEffect(() => {
+    // Purge any legacy mock user data
     try {
+      localStorage.removeItem(DEMO_USER_KEY);
+      localStorage.removeItem('metroattend_demo_user');
       const u = localStorage.getItem('metroattend_users');
-      if (u && u.includes('Kwame Mensah')) localStorage.removeItem('metroattend_users');
+      if (u && (u.includes('Kwame Mensah') || u.includes('emp_demo'))) {
+        localStorage.removeItem('metroattend_users');
+      }
       const a = localStorage.getItem('metroattend_attendance');
-      if (a && a.includes('Kwame Mensah')) localStorage.removeItem('metroattend_attendance');
-      const d = localStorage.getItem('metroattend_demo_user');
-      if (d && d.includes('Kwame Mensah')) localStorage.removeItem('metroattend_demo_user');
+      if (a && a.includes('Kwame Mensah')) {
+        localStorage.removeItem('metroattend_attendance');
+      }
     } catch {}
 
-    if (isFirebaseConfigured && auth) {
+    if (auth) {
       const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
         setUser(firebaseUser);
         if (firebaseUser) {
@@ -72,23 +77,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               role: emailIsAdmin ? 'admin' : (loadedProfile.role || 'employee'),
             });
           } else {
-            // Seed base profile from Google Auth account info
+            const displayName = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Staff Member';
             const newProfile: Employee = {
               id: firebaseUser.uid,
               uid: firebaseUser.uid,
-              name: firebaseUser.displayName || 'Staff Member',
+              name: displayName,
               email: firebaseUser.email || '',
-              staffId: '',
+              staffId: `MWI-${firebaseUser.uid.slice(-4).toUpperCase()}`,
               category: 'Permanent Staff',
-              department: '',
-              position: '',
-              supervisor: '',
+              department: 'Operations',
+              position: 'Staff Member',
+              supervisor: 'Operations Lead',
               phone: firebaseUser.phoneNumber || '',
               status: 'Active',
-              avatar: (firebaseUser.displayName || 'SM').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
+              avatar: displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase(),
               photoURL: firebaseUser.photoURL || undefined,
               role: emailIsAdmin ? 'admin' : 'employee',
-              profileComplete: false,
+              profileComplete: true,
             };
             await saveUserProfile(firebaseUser.uid, newProfile);
             setProfile(newProfile);
@@ -100,16 +105,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       return () => unsubscribe();
     } else {
-      // Local/Demo Mode fallback if Firebase credentials are not yet added in .env
-      try {
-        const savedDemoUser = localStorage.getItem(DEMO_USER_KEY);
-        if (savedDemoUser) {
-          const parsed = JSON.parse(savedDemoUser);
-          setProfile(parsed);
-        }
-      } catch (e) {
-        console.warn('Could not read demo user session:', e);
-      }
       setLoading(false);
     }
   }, []);
@@ -120,106 +115,58 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signInWithGoogle = async (asRole: UserRole = 'employee'): Promise<{ isNewUser: boolean; isAdmin: boolean }> => {
     setLoading(true);
     try {
-      if (isFirebaseConfigured && auth && googleProvider) {
-        const result = await signInWithPopup(auth, googleProvider);
-        const fbUser = result.user;
-        setUser(fbUser);
-
-        const emailIsAdmin = isEmailAdmin(fbUser.email);
-        const existing = await getUserProfile(fbUser.uid);
-
-        if (existing) {
-          const updated: Employee = {
-            ...existing,
-            name: fbUser.displayName || existing.name,
-            photoURL: fbUser.photoURL || existing.photoURL,
-            role: emailIsAdmin ? 'admin' : existing.role || 'employee',
-          };
-          await saveUserProfile(fbUser.uid, updated);
-          setProfile(updated);
-          setLoading(false);
-          return {
-            isNewUser: !updated.profileComplete,
-            isAdmin: emailIsAdmin,
-          };
-        } else {
-          const newProfile: Employee = {
-            id: fbUser.uid,
-            uid: fbUser.uid,
-            name: fbUser.displayName || 'Staff Member',
-            email: fbUser.email || '',
-            staffId: '',
-            category: 'Permanent Staff',
-            department: '',
-            position: '',
-            supervisor: '',
-            phone: fbUser.phoneNumber || '',
-            status: 'Active',
-            avatar: (fbUser.displayName || 'SM').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
-            photoURL: fbUser.photoURL || undefined,
-            role: emailIsAdmin ? 'admin' : 'employee',
-            profileComplete: false,
-          };
-          await saveUserProfile(fbUser.uid, newProfile);
-          setProfile(newProfile);
-          setLoading(false);
-          return {
-            isNewUser: true,
-            isAdmin: emailIsAdmin,
-          };
-        }
-      } else {
-        // Instant Demo Login (When Firebase .env credentials are not yet entered)
-        const isDemoAdmin = asRole === 'admin';
-        const demoProfile: Employee = isDemoAdmin
-          ? {
-              id: 'admin_1',
-              uid: 'admin_1',
-              name: 'System Admin',
-              email: DESIGNATED_ADMIN_EMAIL,
-              staffId: 'MWI-ADM-001',
-              category: 'Permanent Staff',
-              department: 'Directorate',
-              position: 'Chief Systems Administrator',
-              supervisor: 'Director General',
-              phone: '+233 24 000 0001',
-              status: 'Active',
-              avatar: 'SA',
-              role: 'admin',
-              profileComplete: true,
-            }
-          : {
-              id: 'emp_demo',
-              uid: 'emp_demo',
-              name: 'Staff Member',
-              email: 'staff@metroworks.gov.gh',
-              staffId: 'MWI-00101',
-              category: 'Permanent Staff',
-              department: 'Operations',
-              position: 'Staff Specialist',
-              supervisor: 'Director of Operations',
-              phone: '+233 24 000 0000',
-              status: 'Active',
-              avatar: 'SM',
-              role: 'employee',
-              profileComplete: false,
-            };
-
-        localStorage.setItem(DEMO_USER_KEY, JSON.stringify(demoProfile));
-        setProfile(demoProfile);
-        setLoading(false);
-        return {
-          isNewUser: false,
-          isAdmin: isDemoAdmin,
-        };
+      if (!auth || !googleProvider) {
+        throw new Error('Firebase Authentication is initializing. Please verify your internet connection and reload the page.');
       }
+      const result = await signInWithPopup(auth, googleProvider);
+      const fbUser = result.user;
+      setUser(fbUser);
+
+      const emailIsAdmin = isEmailAdmin(fbUser.email);
+      const existing = await getUserProfile(fbUser.uid);
+      const displayName = fbUser.displayName || fbUser.email?.split('@')[0] || 'Staff Member';
+
+      const userProfile: Employee = {
+        id: fbUser.uid,
+        uid: fbUser.uid,
+        name: displayName,
+        email: fbUser.email || '',
+        staffId: existing?.staffId || `MWI-${fbUser.uid.slice(-4).toUpperCase()}`,
+        category: existing?.category || 'Permanent Staff',
+        department: existing?.department || 'Operations',
+        position: existing?.position || 'Staff Member',
+        supervisor: existing?.supervisor || 'Operations Lead',
+        phone: fbUser.phoneNumber || existing?.phone || '',
+        status: existing?.status || 'Active',
+        avatar: displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase(),
+        photoURL: fbUser.photoURL || existing?.photoURL || undefined,
+        role: emailIsAdmin ? 'admin' : (existing?.role || (asRole === 'admin' ? 'admin' : 'employee')),
+        profileComplete: true,
+      };
+
+      await saveUserProfile(fbUser.uid, userProfile);
+      setProfile(userProfile);
+      setLoading(false);
+      return {
+        isNewUser: false,
+        isAdmin: emailIsAdmin,
+      };
     } catch (error: any) {
       setLoading(false);
       console.error('Google Sign-in failed:', error);
-      if (error?.code === 'auth/popup-blocked') {
-        throw new Error('Your browser blocked the Google Sign-in popup. Please enable popups for this page in your browser address bar and try again.');
+      if (error?.code === 'auth/popup-closed-by-user') {
+        throw new Error('Google Sign-In was cancelled before completing. Please try again.');
       }
-      throw error;
+      if (error?.code === 'auth/popup-blocked') {
+        throw new Error('Google Sign-In popup was blocked by your browser. Please allow popups for this site and try again.');
+      }
+      if (error?.code === 'auth/unauthorized-domain') {
+        throw new Error(`Domain (${window.location.hostname}) is not authorized in Firebase. Please add "${window.location.hostname}" to Firebase Console -> Authentication -> Settings -> Authorized Domains.`);
+      }
+      if (error?.code === 'auth/operation-not-allowed') {
+        throw new Error('Google Sign-In is not enabled in Firebase Console. Please enable Google under Authentication -> Sign-in method.');
+      }
+      throw new Error(error?.message || 'Failed to authenticate with Google.');
     }
   };
 
@@ -229,90 +176,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signInWithEmail = async (email: string, password: string, asRole: UserRole = 'employee'): Promise<{ isNewUser: boolean; isAdmin: boolean }> => {
     setLoading(true);
     try {
-      if (isFirebaseConfigured && auth) {
-        const fbUser = await signInEmailPassword(email, password);
-        setUser(fbUser);
+      if (!auth) throw new Error('Firebase Authentication is not ready. Please verify your connection.');
+      const fbUser = await signInEmailPassword(email, password);
+      setUser(fbUser);
 
-        const emailIsAdmin = isEmailAdmin(fbUser.email);
-        const existing = await getUserProfile(fbUser.uid);
+      const emailIsAdmin = isEmailAdmin(fbUser.email);
+      const existing = await getUserProfile(fbUser.uid);
+      const displayName = fbUser.displayName || fbUser.email?.split('@')[0] || 'Staff Member';
 
-        if (existing) {
-          setProfile(existing);
-          setLoading(false);
-          return {
-            isNewUser: !existing.profileComplete,
-            isAdmin: emailIsAdmin,
-          };
-        } else {
-          const newProfile: Employee = {
-            id: fbUser.uid,
-            uid: fbUser.uid,
-            name: fbUser.displayName || 'Staff Member',
-            email: fbUser.email || email.trim(),
-            staffId: '',
-            category: 'Permanent Staff',
-            department: '',
-            position: '',
-            supervisor: '',
-            phone: '',
-            status: 'Active',
-            avatar: (fbUser.displayName || email).slice(0, 2).toUpperCase(),
-            role: emailIsAdmin ? 'admin' : 'employee',
-            profileComplete: false,
-          };
-          await saveUserProfile(fbUser.uid, newProfile);
-          setProfile(newProfile);
-          setLoading(false);
-          return {
-            isNewUser: true,
-            isAdmin: emailIsAdmin,
-          };
-        }
-      } else {
-        // Instant Demo Login if Firebase credentials are not yet entered
-        const isDemoAdmin = asRole === 'admin' || isEmailAdmin(email);
-        const demoProfile: Employee = isDemoAdmin
-          ? {
-              id: 'admin_1',
-              uid: 'admin_1',
-              name: 'System Admin',
-              email: DESIGNATED_ADMIN_EMAIL,
-              staffId: 'MWI-ADM-001',
-              category: 'Permanent Staff',
-              department: 'Directorate',
-              position: 'Chief Systems Administrator',
-              supervisor: 'Director General',
-              phone: '+233 24 000 0001',
-              status: 'Active',
-              avatar: 'SA',
-              role: 'admin',
-              profileComplete: true,
-            }
-          : {
-              id: 'emp_demo',
-              uid: 'emp_demo',
-              name: email.split('@')[0] || 'Staff Member',
-              email: email.trim(),
-              staffId: `MWI-${Math.floor(1000 + Math.random() * 9000)}`,
-              category: 'Permanent Staff',
-              department: 'Operations',
-              position: 'Staff Specialist',
-              supervisor: 'Director of Operations',
-              phone: '',
-              status: 'Active',
-              avatar: (email.slice(0, 2) || 'SM').toUpperCase(),
-              role: 'employee',
-              profileComplete: true,
-            };
+      const userProfile: Employee = {
+        id: fbUser.uid,
+        uid: fbUser.uid,
+        name: existing?.name || displayName,
+        email: fbUser.email || email.trim(),
+        staffId: existing?.staffId || `MWI-${fbUser.uid.slice(-4).toUpperCase()}`,
+        category: existing?.category || 'Permanent Staff',
+        department: existing?.department || 'Operations',
+        position: existing?.position || 'Staff Member',
+        supervisor: existing?.supervisor || 'Operations Lead',
+        phone: existing?.phone || '',
+        status: existing?.status || 'Active',
+        avatar: (existing?.name || displayName).split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase(),
+        photoURL: existing?.photoURL || undefined,
+        role: emailIsAdmin ? 'admin' : (existing?.role || (asRole === 'admin' ? 'admin' : 'employee')),
+        profileComplete: true,
+      };
 
-        localStorage.setItem(DEMO_USER_KEY, JSON.stringify(demoProfile));
-        setProfile(demoProfile);
-        setLoading(false);
-        return {
-          isNewUser: false,
-          isAdmin: isDemoAdmin,
-        };
-      }
+      await saveUserProfile(fbUser.uid, userProfile);
+      setProfile(userProfile);
+      setLoading(false);
+      return {
+        isNewUser: false,
+        isAdmin: emailIsAdmin,
+      };
     } catch (error: any) {
       setLoading(false);
       console.error('Email Sign-in failed:', error);
@@ -321,7 +217,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else if (error?.code === 'auth/invalid-email') {
         throw new Error('Please enter a valid email address.');
       }
-      throw error;
+      throw new Error(error?.message || 'Email sign-in failed.');
     }
   };
 
@@ -336,61 +232,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ): Promise<{ isNewUser: boolean; isAdmin: boolean }> => {
     setLoading(true);
     try {
-      if (isFirebaseConfigured && auth) {
-        const fbUser = await createEmailAccount(email, password, name);
-        setUser(fbUser);
-        const emailIsAdmin = isEmailAdmin(fbUser.email);
+      if (!auth) throw new Error('Firebase Authentication is not ready. Please verify your connection.');
+      const fbUser = await createEmailAccount(email, password, name);
+      setUser(fbUser);
+      const emailIsAdmin = isEmailAdmin(fbUser.email);
 
-        const newProfile: Employee = {
-          id: fbUser.uid,
-          uid: fbUser.uid,
-          name: name.trim() || 'Staff Member',
-          email: fbUser.email || email.trim(),
-          staffId: '',
-          category: category as any,
-          department: '',
-          position: '',
-          supervisor: '',
-          phone: '',
-          status: 'Active',
-          avatar: (name || 'SM').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
-          role: emailIsAdmin ? 'admin' : 'employee',
-          profileComplete: false,
-        };
+      const newProfile: Employee = {
+        id: fbUser.uid,
+        uid: fbUser.uid,
+        name: name.trim() || 'Staff Member',
+        email: fbUser.email || email.trim(),
+        staffId: `MWI-${fbUser.uid.slice(-4).toUpperCase()}`,
+        category: category as any,
+        department: 'Operations',
+        position: 'Staff Member',
+        supervisor: 'Operations Lead',
+        phone: '',
+        status: 'Active',
+        avatar: (name || 'SM').split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase(),
+        role: emailIsAdmin ? 'admin' : 'employee',
+        profileComplete: true,
+      };
 
-        await saveUserProfile(fbUser.uid, newProfile);
-        setProfile(newProfile);
-        setLoading(false);
-        return {
-          isNewUser: true,
-          isAdmin: emailIsAdmin,
-        };
-      } else {
-        const isDemoAdmin = isEmailAdmin(email);
-        const demoProfile: Employee = {
-          id: `emp_${Date.now()}`,
-          uid: `emp_${Date.now()}`,
-          name: name.trim() || 'Staff Member',
-          email: email.trim(),
-          staffId: `MWI-${Math.floor(1000 + Math.random() * 9000)}`,
-          category: category as any,
-          department: 'Operations',
-          position: 'Staff Member',
-          supervisor: 'Operations Lead',
-          phone: '',
-          status: 'Active',
-          avatar: (name || 'SM').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
-          role: isDemoAdmin ? 'admin' : 'employee',
-          profileComplete: true,
-        };
-        localStorage.setItem(DEMO_USER_KEY, JSON.stringify(demoProfile));
-        setProfile(demoProfile);
-        setLoading(false);
-        return {
-          isNewUser: false,
-          isAdmin: isDemoAdmin,
-        };
-      }
+      await saveUserProfile(fbUser.uid, newProfile);
+      setProfile(newProfile);
+      setLoading(false);
+      return {
+        isNewUser: false,
+        isAdmin: emailIsAdmin,
+      };
     } catch (error: any) {
       setLoading(false);
       console.error('Email Registration failed:', error);
@@ -399,7 +269,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else if (error?.code === 'auth/weak-password') {
         throw new Error('Password must be at least 6 characters long.');
       }
-      throw error;
+      throw new Error(error?.message || 'Registration failed.');
     }
   };
 
@@ -407,7 +277,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * Send Password Reset Email
    */
   const sendPasswordReset = async (email: string): Promise<void> => {
-    if (isFirebaseConfigured && auth) {
+    if (auth) {
       await resetUserPassword(email);
     }
   };
@@ -416,10 +286,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * Log out
    */
   const logout = async () => {
-    if (isFirebaseConfigured && auth) {
+    if (auth) {
       await firebaseSignOut(auth);
     }
     localStorage.removeItem(DEMO_USER_KEY);
+    localStorage.removeItem('metroattend_demo_user');
     setUser(null);
     setProfile(null);
   };
@@ -428,13 +299,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * Update Profile data (after Google sign up or editing profile)
    */
   const updateProfileData = async (data: Partial<Employee>) => {
-    const currentUid = user?.uid || profile?.uid || profile?.id || 'emp_demo';
+    const currentUid = user?.uid || profile?.uid || profile?.id;
+    if (!currentUid) return;
     const updated = { ...profile, ...data, profileComplete: true } as Employee;
     await saveUserProfile(currentUid, updated);
     setProfile(updated);
-    if (!isFirebaseConfigured) {
-      localStorage.setItem(DEMO_USER_KEY, JSON.stringify(updated));
-    }
   };
 
   return (

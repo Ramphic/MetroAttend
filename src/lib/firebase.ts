@@ -29,14 +29,14 @@ import {
 import { Employee, AttendanceRecord, WorkplaceSettings, StaffCategory, SystemNotification, AttendanceStatus } from '../types';
 import { getDeviceSignature } from './deviceFingerprint';
 
-// Configuration from environment variables
+// Configuration from environment variables (with project defaults for deployed environments)
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyBrnaPztFK9oo_-V71R4L_88bFoJU7caAE',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'durattendance.firebaseapp.com',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'durattendance',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'durattendance.firebasestorage.app',
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '99884343146',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:99884343146:web:fe11334a1ccca71e22cf13',
 };
 
 // Check if valid Firebase configuration is provided

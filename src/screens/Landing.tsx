@@ -22,12 +22,8 @@ export default function Landing({ nav }: { nav: NavProps }) {
     setLoading(true);
     setError(null);
     try {
-      const { isNewUser } = await signInWithGoogle('employee');
-      if (isNewUser) {
-        nav.navigate('profile-setup');
-      } else {
-        nav.navigate('dashboard');
-      }
+      await signInWithGoogle('employee');
+      nav.navigate('dashboard');
     } catch (err: any) {
       console.error(err);
       setError(err?.message || 'Failed to sign in with Google');
@@ -45,12 +41,8 @@ export default function Landing({ nav }: { nav: NavProps }) {
     setLoading(true);
     setError(null);
     try {
-      const { isNewUser } = await signInWithEmail(email.trim(), password, 'employee');
-      if (isNewUser) {
-        nav.navigate('profile-setup');
-      } else {
-        nav.navigate('dashboard');
-      }
+      await signInWithEmail(email.trim(), password, 'employee');
+      nav.navigate('dashboard');
     } catch (err: any) {
       console.error(err);
       setError(err?.message || 'Sign in failed. Check your email and password.');
