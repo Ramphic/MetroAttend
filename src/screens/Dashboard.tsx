@@ -60,6 +60,13 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
       ? user.displayName.split(' ')[0] 
       : 'Staff Member';
 
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  };
+
   const handleMarkAbsent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!absenceReason) return;
@@ -202,7 +209,7 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
               <span className="text-emerald-400 font-semibold">{workplace.officeName}</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-display font-800 leading-tight">
-              Good morning, {firstName} 👋
+              {getGreeting()}, {firstName} 👋
             </h1>
             <p className="text-white/60 text-xs sm:text-sm font-sans mt-1">
               {profile?.position || 'Staff Member'} · {profile?.department || 'Operations'} · <span className="text-white/80 font-mono">{profile?.staffId || 'ID Pending'}</span>

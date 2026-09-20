@@ -13,6 +13,13 @@ export default function CheckInSuccess({ nav }: { nav: NavProps }) {
 
   const name = profile?.name ? profile.name.split(' ')[0] : (user?.displayName ? user.displayName.split(' ')[0] : 'Staff Member');
 
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  };
+
   return (
     <MobileShell nav={nav} showBottomNav={false}>
       <div className="flex flex-col items-center justify-center p-8 sm:p-12 text-center max-w-lg mx-auto">
@@ -31,7 +38,7 @@ export default function CheckInSuccess({ nav }: { nav: NavProps }) {
         {/* Heading */}
         <div className={`transition-all duration-500 delay-150 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
           <h1 className="text-2xl sm:text-3xl font-display font-800 text-slate-900 mb-2">Check-in Confirmed!</h1>
-          <p className="text-slate-600 text-sm">Good morning, {name}.</p>
+          <p className="text-slate-600 text-sm">{getGreeting()}, {name}.</p>
           <p className="text-slate-500 text-sm mt-0.5">
             Your attendance was timestamped at <span className="font-display font-bold text-navy">{nav.checkInTime || '8:03 AM'}</span> today.
           </p>
