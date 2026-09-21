@@ -912,6 +912,142 @@ export async function deleteAttendanceRecord(recordId: string): Promise<void> {
   saveLocalAttendance(filtered);
 }
 
+/**
+ * Reset today's attendance record for a specific user (Demo & Testing helper)
+ */
+export async function resetTodayAttendance(userId: string): Promise<void> {
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  if (db) {
+    try {
+      const q = query(
+        collection(db, 'attendance'),
+        where('date', '==', todayStr)
+      );
+      const snap = await getDocs(q);
+      const userDocs = snap.docs.filter(d => {
+        const data = d.data();
+        return data.userId === userId || data.employeeId === userId;
+      });
+
+      for (const d of userDocs) {
+        await deleteDoc(d.ref);
+      }
+    } catch (e) {
+      console.warn('Error resetting today attendance in Firestore:', e);
+    }
+  }
+
+  // Clear from local storage
+  const local = getLocalAttendance();
+  const filtered = local.filter(r => 
+    !((r.userId === userId || r.employeeId === userId) && (r.date === todayStr || r.date === 'Today'))
+  );
+  saveLocalAttendance(filtered);
+
+  // Clear session state
+  try {
+    localStorage.removeItem('metroattend_session_state');
+  } catch {}
+}
+
+/**
+ * Reset ALL attendance records for today (Demo Clean-Slate Helper)
+ */
+export async function resetAllTodayAttendance(): Promise<void> {
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  if (db) {
+    try {
+      const q = query(
+        collection(db, 'attendance'),
+        where('date', '==', todayStr)
+      );
+      const snap = await getDocs(q);
+      for (const d of snap.docs) {
+        await deleteDoc(d.ref);
+      }
+    } catch (e) {
+      console.warn('Error resetting all today attendance in Firestore:', e);
+    }
+  }
+
+  const local = getLocalAttendance();
+  const filtered = local.filter(r => r.date !== todayStr && r.date !== 'Today');
+  saveLocalAttendance(filtered);
+
+  try {
+    localStorage.removeItem('metroattend_session_state');
+  } catch {}
+}
+
+/**
+ * Simulate a second employee clocking in on the same phone to demo Anti-Buddy Punching alert
+ */
+export async function simulateSharedDeviceCheckIn(userId: string, primaryName: string): Promise<void> {
+  const sig = getDeviceSignature();
+  const todayStr = new Date().toISOString().split('T')[0];
+  const colleagueName = 'Abena Osei (NSP)';
+  const colleagueId = 'emp_nsp_demo_buddy';
+
+  const colleagueRecord: AttendanceRecord = {
+    employeeId: 'MWI-8821',
+    userId: colleagueId,
+    name: colleagueName,
+    category: 'National Service Personnel',
+    department: 'Engineering',
+    date: todayStr,
+    dayLabel: new Date().toLocaleDateString('en-GB', { weekday: 'long' }),
+    checkIn: '8:05 AM',
+    checkOut: '—',
+    status: 'Present',
+    locationVerified: true,
+    latitude: 5.7068,
+    longitude: -0.2981,
+    distanceMeters: 18,
+    deviceId: sig.deviceId,
+    deviceModel: sig.deviceModel,
+    deviceBrowser: sig.deviceBrowser,
+    deviceOs: sig.deviceOs,
+    deviceLabel: sig.deviceLabel,
+    isSharedDevice: true,
+    sharedWithEmployeeName: primaryName || 'Primary Staff',
+    timestamp: Date.now() - 60000,
+  };
+
+  if (db) {
+    try {
+      const q = query(collection(db, 'attendance'), where('date', '==', todayStr));
+      const snap = await getDocs(q);
+      const userDoc = snap.docs.find(d => {
+        const data = d.data();
+        return data.userId === userId || data.employeeId === userId;
+      });
+
+      if (userDoc) {
+        await updateDoc(userDoc.ref, {
+          isSharedDevice: true,
+          sharedWithEmployeeName: colleagueName,
+        });
+      }
+
+      await addDoc(collection(db, 'attendance'), colleagueRecord);
+    } catch (e) {
+      console.warn('Error simulating shared device in Firestore:', e);
+    }
+  }
+
+  const local = getLocalAttendance();
+  const idx = local.findIndex(r => (r.userId === userId || r.employeeId === userId) && (r.date === todayStr || r.date === 'Today'));
+  if (idx >= 0) {
+    local[idx].isSharedDevice = true;
+    local[idx].sharedWithEmployeeName = colleagueName;
+  }
+  colleagueRecord.id = `att_demo_${Date.now()}`;
+  local.unshift(colleagueRecord);
+  saveLocalAttendance(local);
+}
+
 export function exportRecordsToCSV(records: AttendanceRecord[], filename = 'metroattend_attendance.csv') {
   const headers = ['Staff Name', 'Staff ID', 'Category', 'Department', 'Date', 'Day', 'Check In', 'Check Out', 'Status', 'GPS Verified', 'Distance (m)'];
   const rows = records.map(r => [
@@ -928,7 +1064,7 @@ export function exportRecordsToCSV(records: AttendanceRecord[], filename = 'metr
     `"${r.distanceMeters || 0}"`,
   ]);
 
-  const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  const csvContent = [headers.join(','), ...rows.map(r => [headers].map(() => '').join(',')) ? rows.map(r => r.join(',')) : []].join('\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -938,4 +1074,5 @@ export function exportRecordsToCSV(records: AttendanceRecord[], filename = 'metr
   link.click();
   document.body.removeChild(link);
 }
+
 

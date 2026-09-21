@@ -20,6 +20,7 @@ import Reports from './screens/admin/Reports';
 import LocationSettings from './screens/admin/LocationSettings';
 import Settings from './screens/admin/Settings';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
+import DemoToolbar from './components/DemoToolbar';
 import { getTodayUserAttendance } from './lib/firebase';
 
 function AccessDenied({ nav, onPreviewAdmin }: { nav: NavProps; onPreviewAdmin: () => void }) {
@@ -201,12 +202,14 @@ function MainContent() {
     }
   }
 
+  const [demoModalOpen, setDemoModalOpen] = useState(false);
+
   return (
     <div style={{ minHeight: '100vh' }} className="relative">
       {renderScreen()}
       <PWAInstallPrompt />
 
-      {/* Floating View Switcher: allows instant switching between Employee App and Admin Console */}
+      {/* Floating View Switcher & Demo Tools */}
       <div className="fixed bottom-20 sm:bottom-4 right-4 z-50 bg-slate-900/90 text-white backdrop-blur-md rounded-2xl p-1.5 shadow-2xl border border-white/20 flex items-center gap-1 text-xs font-display font-bold">
         <button
           onClick={() => {
@@ -230,7 +233,23 @@ function MainContent() {
         >
           🛠 Admin Console
         </button>
+        <button
+          onClick={() => setDemoModalOpen(true)}
+          className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white shadow-xs transition-all flex items-center gap-1 cursor-pointer"
+          title="Demo Toolkit: Reset attendance, time simulator, GPS override"
+        >
+          <span className="animate-pulse">⚡</span>
+          <span>Demo Tools</span>
+        </button>
       </div>
+
+      {/* Presentation & Demo Toolkit */}
+      <DemoToolbar 
+        nav={nav} 
+        currentScreen={screen} 
+        isOpen={demoModalOpen} 
+        setIsOpen={setDemoModalOpen} 
+      />
     </div>
   );
 }

@@ -29,6 +29,15 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
       if (!isMounted) return;
       setWorkplace(wp);
 
+      // Check if Demo GPS override is enabled
+      const demoForceGps = localStorage.getItem('metroattend_demo_force_gps') === 'true';
+      if (demoForceGps) {
+        setUserCoords({ lat: wp.latitude + 0.0001, lng: wp.longitude + 0.0001 });
+        setDistance(25);
+        setStage('verified');
+        return;
+      }
+
       if ('geolocation' in navigator) {
         navigator.geolocation.getCurrentPosition(
           (pos) => {
@@ -77,13 +86,26 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
   const handleCompleteCheckIn = async () => {
     setSubmitting(true);
     const now = new Date();
-    const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
     const todayStr = now.toISOString().split('T')[0];
 
-    const [startHour, startMin] = workplace.workStartTime.split(':').map(Number);
-    const limitMinutes = startHour * 60 + startMin + workplace.gracePeriodMinutes;
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
-    const status = currentMinutes > limitMinutes ? 'Late' : 'Present';
+    // Check if demo time mode is active
+    const demoTimeMode = localStorage.getItem('metroattend_demo_timemode');
+    let timeStr: string;
+    let status: 'Present' | 'Late';
+
+    if (demoTimeMode === 'ontime') {
+      timeStr = '8:02 AM';
+      status = 'Present';
+    } else if (demoTimeMode === 'late') {
+      timeStr = '8:42 AM';
+      status = 'Late';
+    } else {
+      timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+      const [startHour, startMin] = workplace.workStartTime.split(':').map(Number);
+      const limitMinutes = startHour * 60 + startMin + workplace.gracePeriodMinutes;
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+      status = currentMinutes > limitMinutes ? 'Late' : 'Present';
+    }
 
     const employeeId = profile?.staffId || profile?.id || user?.uid || `MWI-${Math.floor(1000 + Math.random() * 9000)}`;
     const employeeName = profile?.name || user?.displayName || 'Staff Member';
@@ -225,6 +247,15 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
                     <span className="font-mono text-slate-700">{workplace.latitude.toFixed(6)}, {workplace.longitude.toFixed(6)}</span>
                   </div>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={handleSimulateAtHQ}
+                  className="w-full py-2.5 px-3 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-display font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                >
+                  <span>⚡</span>
+                  <span>Instant Verify at HQ (Demo Bypass)</span>
+                </button>
               </div>
             )}
 
