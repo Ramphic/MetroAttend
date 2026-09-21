@@ -1,8 +1,15 @@
 {
+  "id": "/",
   "short_name": "MetroAttend",
   "name": "MetroAttend · Workforce Attendance",
   "description": "Secure digital GPS workforce check-in and attendance management for MetroWorks Infrastructure Services",
   "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    },
     {
       "src": "/icon-192.png",
       "type": "image/png",
@@ -30,7 +37,8 @@
     {
       "src": "/apple-touch-icon.png",
       "type": "image/png",
-      "sizes": "180x180"
+      "sizes": "180x180",
+      "purpose": "any"
     }
   ],
   "start_url": "/",
@@ -39,5 +47,6 @@
   "theme_color": "#1B3A6B",
   "display": "standalone",
   "orientation": "portrait-primary",
+  "prefer_related_applications": false,
   "categories": ["business", "productivity", "utilities"]
 }

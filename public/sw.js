@@ -1,5 +1,5 @@
 // MetroAttend PWA Service Worker
-const CACHE_NAME = 'metroattend-v1';
+const CACHE_NAME = 'metroattend-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -14,10 +14,17 @@ const ASSETS_TO_CACHE = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE).catch((err) => {
-        console.warn('Non-fatal precache asset fetch warning:', err);
-      });
+    caches.open(CACHE_NAME).then(async (cache) => {
+      await Promise.allSettled(
+        ASSETS_TO_CACHE.map(async (url) => {
+          try {
+            const res = await fetch(url);
+            if (res.ok) await cache.put(url, res);
+          } catch (e) {
+            console.warn('Precache skip for:', url, e);
+          }
+        })
+      );
     })
   );
   self.skipWaiting();

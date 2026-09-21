@@ -13,12 +13,18 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 )
 
 // Register PWA service worker
-if ('serviceWorker' in navigator && process.env.NODE_ENV !== 'test') {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').then((registration) => {
+if ('serviceWorker' in navigator) {
+  const registerSW = () => {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' }).then((registration) => {
       console.log('MetroAttend Service Worker registered with scope:', registration.scope);
     }).catch((err) => {
       console.warn('Service Worker registration failed:', err);
     });
-  });
+  };
+
+  if (document.readyState === 'complete') {
+    registerSW();
+  } else {
+    window.addEventListener('load', registerSW);
+  }
 }
