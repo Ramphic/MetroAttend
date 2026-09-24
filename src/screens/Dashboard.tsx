@@ -268,6 +268,28 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
 
       {/* Responsive Content Grid */}
       <div className="p-6 sm:p-8 bg-slate-50/50 space-y-6">
+        {/* Install App Quick-Action Banner on Dashboard */}
+        <div className="bg-linear-to-r from-navy via-navy-light to-navy text-white rounded-2xl p-4 sm:p-5 shadow-sm border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center text-xl flex-shrink-0">
+              📲
+            </div>
+            <div>
+              <div className="font-display font-bold text-sm text-white">Add MetroAttend to this Phone</div>
+              <div className="text-white/70 text-xs mt-0.5">Install on home screen for fast 1-tap morning clock-in & offline site access</div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (window.openPWAInstall) window.openPWAInstall();
+            }}
+            className="px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-display font-bold text-xs rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer whitespace-nowrap self-start sm:self-auto"
+          >
+            📲 Install on Device
+          </button>
+        </div>
+
         {/* Latest Announcement Pill if available */}
         {latestAnnouncement && (
           <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-start gap-3 shadow-2xs">

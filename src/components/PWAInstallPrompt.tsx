@@ -1,14 +1,19 @@
 import React, { useState, useEffect } from 'react';
 
+declare global {
+  interface Window {
+    openPWAInstall?: () => void;
+    __pwaInstallPrompt?: any;
+  }
+}
+
 export default function PWAInstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showPrompt, setShowPrompt] = useState(false);
+  const [topBannerDismissed, setTopBannerDismissed] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
   const [isAndroid, setIsAndroid] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
-  const [dismissed, setDismissed] = useState(() => {
-    return sessionStorage.getItem('pwa_prompt_dismissed') === 'true';
-  });
 
   useEffect(() => {
     // Check if already running in standalone mode (installed PWA)
@@ -27,64 +32,103 @@ export default function PWAInstallPrompt() {
     setIsIOS(iosDevice);
     setIsAndroid(androidDevice);
 
+    // Register global trigger for buttons across the app
+    window.openPWAInstall = () => setShowPrompt(true);
+
     // Capture Chrome / Edge / Android install prompt
     const handleBeforeInstall = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
-      // Auto-show prompt on first visit if not dismissed
-      if (!sessionStorage.getItem('pwa_prompt_dismissed')) {
+      window.__pwaInstallPrompt = e;
+      // Auto-open prompt on mobile if not already dismissed in this session
+      if (!sessionStorage.getItem('pwa_prompt_auto_shown')) {
+        sessionStorage.setItem('pwa_prompt_auto_shown', 'true');
         setShowPrompt(true);
       }
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
 
-    // If on iOS or mobile device and not dismissed, show install helper after 2 seconds
-    if (!standalone && !sessionStorage.getItem('pwa_prompt_dismissed')) {
-      const timer = setTimeout(() => {
+    // Check if global prompt was already stored
+    if (window.__pwaInstallPrompt) {
+      setDeferredPrompt(window.__pwaInstallPrompt);
+    }
+
+    // Auto-show helper for iOS or mobile browser after 2 seconds
+    let timer: any;
+    if (!sessionStorage.getItem('pwa_prompt_auto_shown')) {
+      timer = setTimeout(() => {
+        sessionStorage.setItem('pwa_prompt_auto_shown', 'true');
         setShowPrompt(true);
-      }, 2500);
-      return () => {
-        clearTimeout(timer);
-        window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
-      };
+      }, 2000);
     }
 
     return () => {
+      if (timer) clearTimeout(timer);
       window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
     };
   }, []);
 
   const handleInstallClick = async () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
+    const promptEvent = deferredPrompt || window.__pwaInstallPrompt;
+    if (promptEvent) {
       try {
-        const { outcome } = await deferredPrompt.userChoice;
+        await promptEvent.prompt();
+        const { outcome } = await promptEvent.userChoice;
         if (outcome === 'accepted') {
           setShowPrompt(false);
           setDeferredPrompt(null);
+          window.__pwaInstallPrompt = null;
         }
       } catch (err) {
         console.warn('Install prompt error:', err);
       }
     } else {
-      // If deferredPrompt is not yet ready, show manual guide
+      // Keep modal open to show browser-specific instructions
       setShowPrompt(true);
     }
   };
 
   const handleDismiss = () => {
     setShowPrompt(false);
-    setDismissed(true);
-    sessionStorage.setItem('pwa_prompt_dismissed', 'true');
   };
 
-  // If already installed, hide everything
+  // If already installed and running standalone, do not render
   if (isStandalone) return null;
 
   return (
     <>
-      {/* Persistent floating button on bottom-left so user can install anytime */}
+      {/* Sticky Mobile Top Banner: Persistent and impossible to miss */}
+      {!topBannerDismissed && (
+        <div className="bg-navy-dark text-white px-3.5 py-2 text-xs flex items-center justify-between shadow-md border-b border-white/10 z-30 relative">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-base flex-shrink-0">📲</span>
+            <div className="truncate">
+              <span className="font-display font-bold">Install MetroAttend</span>
+              <span className="text-white/60 ml-1.5 hidden sm:inline">• Add to Home Screen</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowPrompt(true)}
+              className="px-2.5 py-1 bg-amber-400 hover:bg-amber-300 text-slate-950 font-display font-bold text-[11px] rounded-lg transition-all shadow-2xs cursor-pointer active:scale-95"
+            >
+              Install App
+            </button>
+            <button
+              type="button"
+              onClick={() => setTopBannerDismissed(true)}
+              className="text-white/50 hover:text-white p-1 text-xs cursor-pointer"
+              title="Dismiss banner"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Persistent floating button on bottom-left for quick access */}
       {!showPrompt && (
         <div className="fixed bottom-20 sm:bottom-4 left-4 z-40">
           <button
@@ -114,7 +158,7 @@ export default function PWAInstallPrompt() {
                 />
                 <div>
                   <h3 className="text-base font-display font-800 text-slate-900">Install MetroAttend</h3>
-                  <p className="text-slate-500 text-xs mt-0.5">MetroWorks Infrastructure Services</p>
+                  <p className="text-slate-500 text-xs mt-0.5">Department of Urban Roads</p>
                   <span className="inline-block mt-1 bg-emerald-50 text-emerald-700 text-[9px] font-mono font-bold px-2 py-0.5 rounded-full">
                     OFFICIAL MOBILE APPLICATION
                   </span>
@@ -130,7 +174,7 @@ export default function PWAInstallPrompt() {
             </div>
 
             <p className="text-slate-600 text-xs leading-relaxed">
-              Install the MetroAttend app to your home screen for high-precision GPS geofencing, shift notifications, and fast clock-in without entering URLs.
+              Install MetroAttend directly onto this phone's home screen. Enjoy fast 1-tap morning clock-in, high-precision GPS geofencing, and offline attendance without typing web addresses.
             </p>
 
             {/* If browser supports 1-click install (Chrome / Edge / Android with prompt) */}
@@ -138,7 +182,7 @@ export default function PWAInstallPrompt() {
               <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 text-xs text-emerald-900 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-base">✓</span>
-                  <span className="font-semibold">Your device is ready for 1-click install</span>
+                  <span className="font-semibold">Ready for 1-click instant installation</span>
                 </div>
               </div>
             )}
@@ -147,7 +191,7 @@ export default function PWAInstallPrompt() {
             {isIOS && (
               <div className="bg-navy-50 border border-navy/15 rounded-2xl p-4 space-y-2.5">
                 <div className="text-xs font-display font-bold text-navy flex items-center gap-1.5">
-                  <span>📱 Apple iOS Safari Installation:</span>
+                  <span>📱 Apple iPhone / Safari Instructions:</span>
                 </div>
                 <div className="space-y-2.5 text-xs text-navy/80">
                   <div className="flex items-center gap-2.5">
@@ -159,26 +203,26 @@ export default function PWAInstallPrompt() {
                   </div>
                   <div className="flex items-center gap-2.5">
                     <span className="w-5 h-5 rounded-full bg-navy text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">2</span>
-                    <span>Scroll down and tap <strong>Add to Home Screen</strong></span>
+                    <span>Scroll down and tap <strong>"Add to Home Screen"</strong></span>
                   </div>
                   <div className="flex items-center gap-2.5">
                     <span className="w-5 h-5 rounded-full bg-navy text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">3</span>
-                    <span>Tap <strong>Add</strong> in the top-right corner</span>
+                    <span>Tap <strong>"Add"</strong> in the top-right corner</span>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Android / Chrome Manual Instructions (when prompt is waiting) */}
+            {/* Android / Chrome Manual Instructions (when prompt is waiting or in Chrome menu) */}
             {!isIOS && !deferredPrompt && (
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2.5">
                 <div className="text-xs font-display font-bold text-slate-800 flex items-center gap-1.5">
-                  <span>🌐 Browser Installation Steps:</span>
+                  <span>🤖 Android / Chrome Installation:</span>
                 </div>
                 <div className="space-y-2 text-xs text-slate-600">
                   <div className="flex items-center gap-2.5">
                     <span className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 text-[10px] font-bold flex items-center justify-center flex-shrink-0">1</span>
-                    <span>Tap the <strong>three dots (⋮)</strong> menu in the top-right corner of Chrome / Edge.</span>
+                    <span>Tap the <strong>three dots (⋮)</strong> in the top-right of your browser.</span>
                   </div>
                   <div className="flex items-center gap-2.5">
                     <span className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 text-[10px] font-bold flex items-center justify-center flex-shrink-0">2</span>
@@ -204,7 +248,7 @@ export default function PWAInstallPrompt() {
                   onClick={handleInstallClick}
                   className="flex-1 py-3 px-4 rounded-xl bg-navy text-white font-display font-bold text-xs hover:bg-navy-dark transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-98"
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                   Install App Now
                 </button>
               ) : (

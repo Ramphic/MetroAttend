@@ -123,23 +123,23 @@ export function calculateDistanceMeters(
 
 export const calculateDistance = calculateDistanceMeters;
 
-// Default Workplace location: User configured site
+// Default Workplace location: Department of Urban Roads HQ (Ministries, Accra)
 export const DEFAULT_WORKPLACE: WorkplaceSettings = {
-  officeName: 'MetroWorks Main Office',
-  latitude: 5.706728467520077,
-  longitude: -0.2981852347735038,
-  geofenceRadius: 100, // meters
+  officeName: 'Department of Urban Roads (DUR HQ)',
+  latitude: 5.549200,
+  longitude: -0.197800,
+  geofenceRadius: 350, // 350 meters gives complete compound coverage and accommodates indoor GPS inaccuracy
   workStartTime: '08:00',
   gracePeriodMinutes: 15,
   allowCheckout: true,
   workEndTime: '17:00',
   breakTime: '12:30',
   weekendWorkAllowed: false,
-  orgName: 'MetroWorks Infrastructure Agency',
-  orgCode: 'MWI',
-  orgEmail: 'info@metroworks.gov.gh',
-  orgPhone: '+233 30 200 0000',
-  orgAddress: 'P.O. Box GP 1234, High Street, Accra, Ghana',
+  orgName: 'Department of Urban Roads',
+  orgCode: 'DUR',
+  orgEmail: 'info@dur.gov.gh',
+  orgPhone: '+233 30 268 5685',
+  orgAddress: 'Treasury Road, Ministries, Accra, Ghana (GA-143-4328)',
   timezone: 'Africa/Accra (GMT+0)',
   antiSpoofing: true,
   deviceLock: true,

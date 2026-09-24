@@ -5,10 +5,10 @@ import { getWorkplaceSettings, saveWorkplaceSettings, DEFAULT_WORKPLACE, calcula
 
 export default function LocationSettings({ nav }: { nav: NavProps }) {
   const [settings, setSettings] = useState<WorkplaceSettings>(DEFAULT_WORKPLACE);
-  const [radius, setRadius] = useState(100);
-  const [officeName, setOfficeName] = useState('MetroWorks Main Office');
-  const [latitude, setLatitude] = useState('5.706728');
-  const [longitude, setLongitude] = useState('-0.298185');
+  const [radius, setRadius] = useState(350);
+  const [officeName, setOfficeName] = useState('Department of Urban Roads (DUR HQ)');
+  const [latitude, setLatitude] = useState('5.549200');
+  const [longitude, setLongitude] = useState('-0.197800');
   const [saved, setSaved] = useState(false);
   const [detecting, setDetecting] = useState(false);
   const [detectStatus, setDetectStatus] = useState<string | null>(null);
@@ -194,24 +194,25 @@ export default function LocationSettings({ nav }: { nav: NavProps }) {
             <span className="text-[11px] font-display font-700 text-slate-500 uppercase tracking-wide mr-2">Presets:</span>
             <button
               type="button"
-              onClick={() => handleSetPreset('MetroWorks Main Facility', 5.706728, -0.298185, 100)}
+              onClick={() => handleSetPreset('Department of Urban Roads (DUR HQ)', 5.549200, -0.197800, 350)}
               className="px-3 py-1.5 rounded-lg bg-white border border-border text-xs font-display font-semibold text-slate-700 hover:border-navy hover:text-navy transition-all shadow-xs"
             >
-              🏢 Main Office (5.7067, -0.2982)
+              🏢 DUR Head Office (Ministries)
             </button>
             <button
               type="button"
-              onClick={() => handleSetPreset('Depot & Workshop Zone', 5.708512, -0.296144, 150)}
+              onClick={() => handleSetPreset('DUR Greater Accra Regional Office', 5.572100, -0.223500, 350)}
               className="px-3 py-1.5 rounded-lg bg-white border border-border text-xs font-display font-semibold text-slate-700 hover:border-navy hover:text-navy transition-all shadow-xs"
             >
-              🚛 Workshop Depot
+              🏢 Greater Accra Regional
             </button>
             <button
               type="button"
-              onClick={() => handleSetPreset('North Operations Center', 5.712390, -0.294100, 200)}
-              className="px-3 py-1.5 rounded-lg bg-white border border-border text-xs font-display font-semibold text-slate-700 hover:border-navy hover:text-navy transition-all shadow-xs"
+              onClick={handleDetectGPS}
+              className="px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-300 text-xs font-display font-bold text-emerald-900 hover:bg-emerald-100 transition-all shadow-xs flex items-center gap-1"
             >
-              🏗️ North Station
+              <span>🎯</span>
+              <span>Set to My Current Office GPS</span>
             </button>
           </div>
         </div>

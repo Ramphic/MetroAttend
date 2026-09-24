@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { 
   calculateDistanceMeters, 
   getWorkplaceSettings, 
+  saveWorkplaceSettings,
   recordCheckIn, 
   addNotification, 
   DEFAULT_WORKPLACE 
@@ -34,12 +35,38 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
   const [distance, setDistance] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [calibrating, setCalibrating] = useState(false);
+  const [calibratedNotice, setCalibratedNotice] = useState<string | null>(null);
 
   // Field Site Specific State
   const [selectedCorridor, setSelectedCorridor] = useState<string>(ROAD_PROJECT_CORRIDORS[0]);
   const [customCorridor, setCustomCorridor] = useState<string>('');
   const [siteNotes, setSiteNotes] = useState<string>('');
   const [fieldGpsAcquiring, setFieldGpsAcquiring] = useState<boolean>(false);
+
+  const handleCalibrateCurrentOffice = async () => {
+    if (!userCoords) return;
+    setCalibrating(true);
+    try {
+      const updated: WorkplaceSettings = {
+        ...workplace,
+        officeName: 'Department of Urban Roads (DUR)',
+        latitude: userCoords.lat,
+        longitude: userCoords.lng,
+        geofenceRadius: 350,
+      };
+      await saveWorkplaceSettings(updated);
+      setWorkplace(updated);
+      setDistance(10);
+      setStage('verified');
+      setCalibratedNotice(`✓ Office HQ successfully calibrated to your current position (${userCoords.lat.toFixed(5)}, ${userCoords.lng.toFixed(5)}) with a 350m geofence!`);
+      setErrorMessage(null);
+    } catch (err) {
+      console.error('Error calibrating office:', err);
+    } finally {
+      setCalibrating(false);
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -359,6 +386,13 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
 
               {stage === 'verified' && (
                 <div className="space-y-4">
+                  {calibratedNotice && (
+                    <div className="bg-emerald-100 border border-emerald-300 text-emerald-900 rounded-xl p-3 text-xs font-display font-semibold flex items-center gap-2">
+                      <span className="text-base">🎯</span>
+                      <span>{calibratedNotice}</span>
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center flex-shrink-0">
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -416,6 +450,33 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
                   <p className="text-slate-600 text-xs leading-relaxed bg-white p-3 rounded-xl border border-border">
                     {errorMessage || `Your device GPS is ${distance ? `${(distance / 1000).toFixed(2)} km` : 'away'} from HQ. To check in at office, you must be within ${workplace.geofenceRadius}m.`}
                   </p>
+
+                  {/* Instant Office Location Calibration Tool */}
+                  {userCoords && (
+                    <div className="p-4 bg-emerald-50 rounded-2xl border-2 border-emerald-400 text-xs space-y-2.5 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <div className="text-emerald-950 font-display font-extrabold text-xs flex items-center gap-1.5">
+                          <span className="text-base">📍</span>
+                          <span>Sitting in your office right now?</span>
+                        </div>
+                        <span className="text-[9px] font-mono font-bold bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-full">
+                          1-Tap Fix
+                        </span>
+                      </div>
+                      <p className="text-emerald-800 text-[11px] leading-relaxed">
+                        Default HQ coordinates were set to a different address. Click below to save your <strong>current building position</strong> ({userCoords.lat.toFixed(5)}, {userCoords.lng.toFixed(5)}) as the official Office HQ with a 350m compound radius.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleCalibrateCurrentOffice}
+                        disabled={calibrating}
+                        className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-display font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <span>🎯</span>
+                        <span>{calibrating ? 'Saving Office Coordinates…' : 'Set My Current Location as Office HQ'}</span>
+                      </button>
+                    </div>
+                  )}
 
                   {/* Field Site Switch Callout */}
                   <div className="p-3.5 bg-blue-50 rounded-xl border border-blue-200 text-xs space-y-2">
