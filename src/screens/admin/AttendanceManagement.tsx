@@ -15,6 +15,7 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
   const [statusFilter, setStatusFilter] = useState<AttendanceStatus | 'All'>('All');
   const [deptFilter, setDeptFilter] = useState('All');
   const [onlyFlaggedDevices, setOnlyFlaggedDevices] = useState(false);
+  const [onlyFieldSites, setOnlyFieldSites] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [editingRow, setEditingRow] = useState<AttendanceRecord | null>(null);
   const [savingStatus, setSavingStatus] = useState(false);
@@ -36,7 +37,8 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
     const matchDept = deptFilter === 'All' || (row.department || 'Operations') === deptFilter;
     const matchDate = !selectedDate || row.date === selectedDate || row.date === 'Today';
     const matchFlagged = !onlyFlaggedDevices || Boolean(row.isSharedDevice);
-    return matchStatus && matchDept && matchDate && matchFlagged;
+    const matchFieldSite = !onlyFieldSites || row.dutyType === 'Field Site';
+    return matchStatus && matchDept && matchDate && matchFlagged && matchFieldSite;
   });
 
   const presentCount = filtered.filter(r => r.status === 'Present').length;
@@ -44,6 +46,7 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
   const absentCount = filtered.filter(r => r.status === 'Absent').length;
   const locationVerifiedCount = filtered.filter(r => r.locationVerified).length;
   const sharedDeviceCount = records.filter(r => r.isSharedDevice).length;
+  const fieldSiteCount = records.filter(r => r.dutyType === 'Field Site').length;
 
   const handleUpdateStatus = async (recordId: string, newStatus: AttendanceStatus) => {
     setSavingStatus(true);
@@ -139,6 +142,7 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
             ))}
 
             {/* Anti-Proxy / Shared Device filter toggle */}
+            {/* Anti-Proxy / Shared Device filter toggle */}
             <button
               onClick={() => setOnlyFlaggedDevices(prev => !prev)}
               className={`px-3 py-1.5 rounded-lg text-xs font-display font-bold transition-all flex items-center gap-1.5 ${
@@ -152,6 +156,24 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
               {sharedDeviceCount > 0 && (
                 <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${onlyFlaggedDevices ? 'bg-amber-700 text-white' : 'bg-amber-200 text-amber-900 font-bold'}`}>
                   {sharedDeviceCount}
+                </span>
+              )}
+            </button>
+
+            {/* Field / Road Site Duty Filter */}
+            <button
+              onClick={() => setOnlyFieldSites(prev => !prev)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-display font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                onlyFieldSites
+                  ? 'bg-amber-500 text-slate-950 shadow-xs font-extrabold'
+                  : 'bg-surface text-amber-900 border border-amber-300 hover:bg-amber-50'
+              }`}
+            >
+              <span>🚧</span>
+              <span>Road Sites</span>
+              {fieldSiteCount > 0 && (
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${onlyFieldSites ? 'bg-amber-950 text-white' : 'bg-amber-200 text-amber-900 font-bold'}`}>
+                  {fieldSiteCount}
                 </span>
               )}
             </button>
@@ -172,11 +194,12 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
       </div>
 
       {/* Real Dynamic Summary strip */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
         {[
           { label: 'Present Today', val: presentCount, color: 'text-success', bg: 'bg-success-bg' },
           { label: 'Late Arrivals', val: lateCount, color: 'text-late', bg: 'bg-late-bg' },
           { label: 'Recorded Absent', val: absentCount, color: 'text-danger', bg: 'bg-danger-bg' },
+          { label: 'Road Site Duty', val: fieldSiteCount, color: 'text-amber-800', bg: 'bg-amber-50' },
           { label: 'GPS Verified', val: locationVerifiedCount, color: 'text-navy', bg: 'bg-navy-50' },
         ].map(s => (
           <div key={s.label} className={`${s.bg} rounded-2xl p-4 border border-slate-100 shadow-xs`}>
@@ -232,10 +255,24 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
                   <td className="px-5 py-3.5 text-xs font-mono text-slate-700">{row.checkIn}</td>
                   <td className="px-5 py-3.5 text-xs font-mono text-slate-400">{row.checkOut}</td>
                   <td className="px-5 py-3.5">
-                    {row.locationVerified ? (
+                    {row.dutyType === 'Field Site' ? (
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-amber-800 text-[10px] font-display font-bold flex items-center gap-1 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md w-fit">
+                          <span>🚧</span> Field Site Duty
+                        </span>
+                        <span className="text-[10px] font-display font-semibold text-slate-800 truncate max-w-[170px]" title={row.siteName || 'Road Project Corridor'}>
+                          {row.siteName || 'Road Project Corridor'}
+                        </span>
+                        {row.latitude && row.longitude && (
+                          <span className="text-[9px] font-mono text-slate-500">
+                            📍 {row.latitude.toFixed(4)}, {row.longitude.toFixed(4)}
+                          </span>
+                        )}
+                      </div>
+                    ) : row.locationVerified ? (
                       <span className="text-success text-[10px] font-display font-semibold flex items-center gap-1">
                         <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-                        GPS Verified {row.distanceMeters ? `(~${row.distanceMeters}m)` : ''}
+                        HQ Verified {row.distanceMeters ? `(~${row.distanceMeters}m)` : ''}
                       </span>
                     ) : (
                       <span className="text-danger text-[10px] font-display font-semibold flex items-center gap-1">

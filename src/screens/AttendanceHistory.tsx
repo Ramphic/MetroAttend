@@ -127,19 +127,30 @@ export default function AttendanceHistory({ nav }: { nav: NavProps }) {
                           Reported Absent{r.absenceReason ? `: ${r.absenceReason}` : ''}
                         </span>
                       ) : (
-                        <>Check-in: <span className="text-navy font-semibold">{r.checkIn}</span> · Check-out: <span className="text-slate-600">{r.checkOut}</span></>
+                        <>
+                          {r.dutyType === 'Field Site' && (
+                            <span className="text-amber-800 font-display font-bold mr-1.5">
+                              🚧 {r.siteName || 'Field Site'} ·
+                            </span>
+                          )}
+                          Check-in: <span className="text-navy font-semibold">{r.checkIn}</span> · Check-out: <span className="text-slate-600">{r.checkOut}</span>
+                        </>
                       )}
                     </div>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2 self-start sm:self-auto">
-                  {r.locationVerified && (
+                  {r.dutyType === 'Field Site' ? (
+                    <span className="text-[10px] font-mono text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full font-semibold flex items-center gap-1">
+                      📍 Site Tagged
+                    </span>
+                  ) : r.locationVerified ? (
                     <span className="text-[10px] font-mono text-success bg-success-bg px-2.5 py-1 rounded-full font-semibold flex items-center gap-1">
                       <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-                      GPS Verified
+                      HQ Geofence
                     </span>
-                  )}
+                  ) : null}
                   <span className={`text-[10px] font-display font-bold px-3 py-1 rounded-full uppercase ${statusColor(r.status)}`}>
                     {r.status}
                   </span>
