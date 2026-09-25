@@ -41,7 +41,8 @@ export default function CheckInSuccess({ nav }: { nav: NavProps }) {
 
   const dutyType = localStorage.getItem('metroattend_last_duty_type') || 'Office HQ';
   const siteName = localStorage.getItem('metroattend_last_site_name') || 'Department HQ';
-  const siteCoords = localStorage.getItem('metroattend_last_site_coords') || '5.7067° N, -0.2982° W';
+  const siteAddress = localStorage.getItem('metroattend_last_site_address') || 'Ministries, Central Accra';
+  const siteCoords = localStorage.getItem('metroattend_last_site_coords') || '5.5492° N, -0.1978° W';
 
   return (
     <MobileShell nav={nav} showBottomNav={false}>
@@ -91,14 +92,16 @@ export default function CheckInSuccess({ nav }: { nav: NavProps }) {
                 </span>
               </div>
               <div className="flex items-center justify-between py-1 border-b border-slate-100">
-                <span className="text-xs text-muted font-display font-semibold">Project Location</span>
+                <span className="text-xs text-muted font-display font-semibold">Project Corridor</span>
                 <span className="text-xs font-display font-bold text-slate-800 max-w-[200px] text-right truncate" title={siteName}>
                   {siteName}
                 </span>
               </div>
               <div className="flex items-center justify-between py-1 border-b border-slate-100">
-                <span className="text-xs text-muted font-display font-semibold">Field GPS Tagged</span>
-                <span className="text-xs font-mono font-bold text-navy">{siteCoords}</span>
+                <span className="text-xs text-muted font-display font-semibold">Field Locality / Area</span>
+                <span className="text-xs font-display font-bold text-navy max-w-[210px] text-right truncate" title={siteAddress}>
+                  📍 {siteAddress}
+                </span>
               </div>
               <div className="flex items-center justify-between py-1">
                 <span className="text-xs text-muted font-display font-semibold">Cloud Verification</span>
@@ -115,8 +118,8 @@ export default function CheckInSuccess({ nav }: { nav: NavProps }) {
                 </span>
               </div>
               <div className="flex items-center justify-between py-1 border-b border-slate-100">
-                <span className="text-xs text-muted font-display font-semibold">Authorized Geofence</span>
-                <span className="text-xs font-mono font-bold text-slate-800">5.7067° N, -0.2982° W</span>
+                <span className="text-xs text-muted font-display font-semibold">Facility Location</span>
+                <span className="text-xs font-display font-bold text-slate-800">📍 Ministries, Central Accra</span>
               </div>
               <div className="flex items-center justify-between py-1">
                 <span className="text-xs text-muted font-display font-semibold">Cloud Database Status</span>

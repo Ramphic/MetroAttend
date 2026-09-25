@@ -10,6 +10,7 @@ import {
   addNotification, 
   DEFAULT_WORKPLACE 
 } from '../lib/firebase';
+import { reverseGeocode, getNearestLandmark } from '../lib/geo';
 
 type Stage = 'checking' | 'verified' | 'failed';
 type DutyMode = 'Office HQ' | 'Field Site';
@@ -32,6 +33,7 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
   const [stage, setStage] = useState<Stage>('checking');
   const [workplace, setWorkplace] = useState<WorkplaceSettings>(DEFAULT_WORKPLACE);
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [detectedAddress, setDetectedAddress] = useState<string>('');
   const [distance, setDistance] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -81,6 +83,7 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
       if (demoForceGps) {
         setUserCoords({ lat: wp.latitude + 0.0001, lng: wp.longitude + 0.0001 });
         setDistance(25);
+        setDetectedAddress('Ministries, Central Accra');
         setStage('verified');
         return;
       }
@@ -92,6 +95,9 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
             const lat = pos.coords.latitude;
             const lng = pos.coords.longitude;
             setUserCoords({ lat, lng });
+            reverseGeocode(lat, lng).then(addr => {
+              if (isMounted) setDetectedAddress(addr);
+            });
 
             const dist = calculateDistanceMeters(lat, lng, wp.latitude, wp.longitude);
             setDistance(dist);
@@ -126,6 +132,7 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
   const handleSimulateAtHQ = () => {
     setUserCoords({ lat: workplace.latitude + 0.0001, lng: workplace.longitude + 0.0001 });
     setDistance(25);
+    setDetectedAddress('Ministries, Central Accra');
     setErrorMessage(null);
     setStage('verified');
   };
@@ -135,18 +142,23 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          setUserCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          setUserCoords({ lat, lng });
+          reverseGeocode(lat, lng).then(setDetectedAddress);
           setFieldGpsAcquiring(false);
         },
         (err) => {
           console.warn('Could not acquire site GPS, falling back to active road corridor coordinates:', err);
           setUserCoords({ lat: 5.6514, lng: -0.1873 });
+          setDetectedAddress('Legon / University of Ghana');
           setFieldGpsAcquiring(false);
         },
         { enableHighAccuracy: true, timeout: 5000 }
       );
     } else {
       setUserCoords({ lat: 5.6514, lng: -0.1873 });
+      setDetectedAddress('Legon / University of Ghana');
       setFieldGpsAcquiring(false);
     }
   };
@@ -185,6 +197,7 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
 
     const lat = userCoords?.lat || (isFieldSite ? 5.6514 : workplace.latitude);
     const lng = userCoords?.lng || (isFieldSite ? -0.1873 : workplace.longitude);
+    const placeAddress = detectedAddress || getNearestLandmark(lat, lng);
 
     try {
       await recordCheckIn({
@@ -201,6 +214,7 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
         locationVerified: true,
         latitude: lat,
         longitude: lng,
+        locationAddress: placeAddress,
         distanceMeters: isFieldSite ? 0 : (distance ?? 25),
         photoURL: profile?.photoURL || user?.photoURL || undefined,
         dutyType: mode,
@@ -210,13 +224,14 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
       // Save to localStorage for instant reference in CheckInSuccess
       localStorage.setItem('metroattend_last_duty_type', mode);
       localStorage.setItem('metroattend_last_site_name', finalSiteName);
+      localStorage.setItem('metroattend_last_site_address', placeAddress);
       localStorage.setItem('metroattend_last_site_coords', `${lat.toFixed(5)}° N, ${lng.toFixed(5)}° W`);
 
       // Log real notification
       await addNotification({
         title: isFieldSite ? '🚧 Field Road Site Check-In Logged' : (status === 'Late' ? 'Late Check-In Recorded' : 'Workplace Check-In Recorded'),
         body: isFieldSite
-          ? `Site check-in verified at ${finalSiteName} (${lat.toFixed(4)}, ${lng.toFixed(4)}) at ${timeStr}. Status: ${status}.`
+          ? `Site check-in verified at ${finalSiteName} (${placeAddress}) at ${timeStr}. Status: ${status}.`
           : `Check-in logged at ${timeStr}. GPS verified at ${workplace.officeName} (~${distance ?? 25}m). Status: ${status}.`,
         type: status === 'Late' ? 'warning' : 'success',
         time: `${timeStr} today`,
@@ -408,16 +423,20 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
 
                   <div className="bg-white rounded-xl p-3.5 border border-border text-xs space-y-2">
                     <div className="flex justify-between">
+                      <span className="text-muted">Target Facility:</span>
+                      <span className="font-semibold text-slate-700">{workplace.officeName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted">Detected Locality:</span>
+                      <span className="font-display font-bold text-slate-800">{detectedAddress || 'Ministries, Central Accra'}</span>
+                    </div>
+                    <div className="flex justify-between">
                       <span className="text-muted">Distance to Site:</span>
                       <span className="font-mono font-bold text-emerald-600">{distance !== null ? `~${distance}m` : 'Inside (verified)'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted">Perimeter Limit:</span>
                       <span className="font-mono text-slate-700">{workplace.geofenceRadius}m</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted">Site GPS:</span>
-                      <span className="font-mono text-slate-700">{workplace.latitude.toFixed(6)}, {workplace.longitude.toFixed(6)}</span>
                     </div>
                   </div>
 
@@ -552,19 +571,20 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
                   </div>
                 </div>
 
-                {/* GPS Coordinates Badge */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-white rounded-xl p-3 border border-slate-200 shadow-2xs">
-                    <div className="text-[10px] font-mono text-muted uppercase">Latitude (Field GPS)</div>
-                    <div className="font-mono text-xs font-bold text-slate-800 mt-0.5">
-                      {userCoords ? `${userCoords.lat.toFixed(6)}°` : '5.651420° N'}
-                    </div>
+                {/* Verified Field Locality Card */}
+                <div className="bg-white rounded-xl p-4 border border-amber-200 shadow-2xs space-y-1.5">
+                  <div className="text-[10px] font-mono text-muted uppercase font-bold flex items-center justify-between">
+                    <span>Verified Field Locality</span>
+                    <span className="text-[9px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-bold border border-emerald-200">
+                      GPS Geotagged
+                    </span>
                   </div>
-                  <div className="bg-white rounded-xl p-3 border border-slate-200 shadow-2xs">
-                    <div className="text-[10px] font-mono text-muted uppercase">Longitude (Field GPS)</div>
-                    <div className="font-mono text-xs font-bold text-slate-800 mt-0.5">
-                      {userCoords ? `${userCoords.lng.toFixed(6)}°` : '-0.187310° W'}
-                    </div>
+                  <div className="text-base font-display font-extrabold text-slate-800 flex items-center gap-2">
+                    <span className="text-lg">📍</span>
+                    <span className="truncate">{detectedAddress || (userCoords ? getNearestLandmark(userCoords.lat, userCoords.lng) : 'Detecting nearby area…')}</span>
+                  </div>
+                  <div className="text-[10px] font-mono text-slate-400">
+                    GPS Coordinates: {userCoords ? `${userCoords.lat.toFixed(4)}° N, ${userCoords.lng.toFixed(4)}° W` : '5.6514° N, -0.1873° W'}
                   </div>
                 </div>
               </div>

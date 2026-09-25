@@ -1049,7 +1049,7 @@ export async function simulateSharedDeviceCheckIn(userId: string, primaryName: s
 }
 
 export function exportRecordsToCSV(records: AttendanceRecord[], filename = 'metroattend_attendance.csv') {
-  const headers = ['Staff Name', 'Staff ID', 'Category', 'Department', 'Date', 'Day', 'Check In', 'Check Out', 'Status', 'GPS Verified', 'Distance (m)'];
+  const headers = ['Staff Name', 'Staff ID', 'Category', 'Department', 'Date', 'Day', 'Duty Type', 'Project / Facility', 'Location / Area', 'Check In', 'Check Out', 'Status', 'GPS Verified', 'Distance (m)'];
   const rows = records.map(r => [
     `"${r.name || 'Staff Member'}"`,
     `"${r.employeeId || ''}"`,
@@ -1057,6 +1057,9 @@ export function exportRecordsToCSV(records: AttendanceRecord[], filename = 'metr
     `"${r.department || 'Operations'}"`,
     `"${r.date || ''}"`,
     `"${r.dayLabel || ''}"`,
+    `"${r.dutyType || 'Office HQ'}"`,
+    `"${r.siteName || 'Department HQ'}"`,
+    `"${r.locationAddress || (r.dutyType === 'Field Site' ? (r.siteName || 'Road Project Corridor') : 'Ministries, Central Accra')}"`,
     `"${r.checkIn || ''}"`,
     `"${r.checkOut || ''}"`,
     `"${r.status || 'Present'}"`,
@@ -1064,7 +1067,7 @@ export function exportRecordsToCSV(records: AttendanceRecord[], filename = 'metr
     `"${r.distanceMeters || 0}"`,
   ]);
 
-  const csvContent = [headers.join(','), ...rows.map(r => [headers].map(() => '').join(',')) ? rows.map(r => r.join(',')) : []].join('\n');
+  const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

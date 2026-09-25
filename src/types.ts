@@ -88,6 +88,7 @@ export interface AttendanceRecord {
   absenceNote?: string;
   dutyType?: 'Office HQ' | 'Field Site';
   siteName?: string;
+  locationAddress?: string;
 }
 
 export interface WorkplaceSettings {

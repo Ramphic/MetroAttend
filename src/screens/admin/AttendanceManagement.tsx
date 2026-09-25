@@ -9,6 +9,7 @@ import {
   resetAllTodayAttendance,
   exportRecordsToCSV 
 } from '../../lib/firebase';
+import { getNearestLandmark } from '../../lib/geo';
 
 export default function AttendanceManagement({ nav }: { nav: NavProps }) {
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
@@ -260,20 +261,26 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
                         <span className="text-amber-800 text-[10px] font-display font-bold flex items-center gap-1 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md w-fit">
                           <span>🚧</span> Field Site Duty
                         </span>
-                        <span className="text-[10px] font-display font-semibold text-slate-800 truncate max-w-[170px]" title={row.siteName || 'Road Project Corridor'}>
+                        <span className="text-xs font-display font-bold text-slate-800 truncate max-w-[180px]" title={row.siteName || 'Road Project Corridor'}>
                           {row.siteName || 'Road Project Corridor'}
                         </span>
-                        {row.latitude && row.longitude && (
-                          <span className="text-[9px] font-mono text-slate-500">
-                            📍 {row.latitude.toFixed(4)}, {row.longitude.toFixed(4)}
+                        <span className="text-[11px] font-display font-semibold text-slate-600 flex items-center gap-1 truncate max-w-[180px]" title={row.locationAddress || (row.latitude && row.longitude ? getNearestLandmark(row.latitude, row.longitude) : 'Field Site')}>
+                          <span>📍</span>
+                          <span className="truncate">
+                            {row.locationAddress || (row.latitude && row.longitude ? getNearestLandmark(row.latitude, row.longitude) : 'Field Project Corridor')}
                           </span>
-                        )}
+                        </span>
                       </div>
                     ) : row.locationVerified ? (
-                      <span className="text-success text-[10px] font-display font-semibold flex items-center gap-1">
-                        <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-                        HQ Verified {row.distanceMeters ? `(~${row.distanceMeters}m)` : ''}
-                      </span>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-success text-[10px] font-display font-semibold flex items-center gap-1">
+                          <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                          🏢 DUR Head Office
+                        </span>
+                        <span className="text-[11px] font-display font-medium text-slate-600">
+                          {row.locationAddress || 'Ministries, Central Accra'} {row.distanceMeters ? `(~${row.distanceMeters}m)` : ''}
+                        </span>
+                      </div>
                     ) : (
                       <span className="text-danger text-[10px] font-display font-semibold flex items-center gap-1">
                         <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M9 3L3 9M3 3l6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
