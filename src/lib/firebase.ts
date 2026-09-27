@@ -133,6 +133,17 @@ export function calculateDistanceMeters(
 
 export const calculateDistance = calculateDistanceMeters;
 
+export const DEFAULT_ROAD_PROJECTS: import('../types').RoadProjectSite[] = [
+  { id: 'proj_1', name: 'Accra-Tema Motorway Expansion Corridor', corridor: 'Motorway Corridor', locality: 'Accra - Tema', status: 'Active' },
+  { id: 'proj_2', name: 'George Walker Bush Highway (N1) Drainage Works', corridor: 'N1 Highway', locality: 'Lapaz - Achimota', status: 'Active' },
+  { id: 'proj_3', name: 'Spintex Road Junction Improvement Project', corridor: 'Spintex Arterial', locality: 'Batsonaa - Spintex', status: 'Active' },
+  { id: 'proj_4', name: 'Pokuase - Ofankor Dualization Arterial', corridor: 'Pokuase Corridor', locality: 'Pokuase - Amasaman', status: 'Active' },
+  { id: 'proj_5', name: 'Asphaltic Overlay Project - Batch 4', corridor: 'Urban Arterials', locality: 'Greater Accra Corridors', status: 'Active' },
+  { id: 'proj_6', name: 'Culvert & Stormwater Drainage Inspection', corridor: 'Municipal Drainage', locality: 'Accra West Corridors', status: 'Active' },
+  { id: 'proj_7', name: 'Topographic Survey & Route Alignment', corridor: 'Survey Corridors', locality: 'All Road Sectors', status: 'Active' },
+  { id: 'proj_8', name: 'Materials Lab & Asphalt Batching Plant', corridor: 'Quality Control Facility', locality: 'Industrial Area', status: 'Active' },
+];
+
 // Default Workplace location: Department of Urban Roads HQ (Ministries, Accra)
 export const DEFAULT_WORKPLACE: WorkplaceSettings = {
   officeName: 'Department of Urban Roads (DUR HQ)',
@@ -154,6 +165,7 @@ export const DEFAULT_WORKPLACE: WorkplaceSettings = {
   antiSpoofing: true,
   deviceLock: true,
   sessionTimeout: 60,
+  roadProjects: DEFAULT_ROAD_PROJECTS,
 };
 
 // Local storage keys for fallback when Firebase credentials are not yet entered
@@ -648,12 +660,18 @@ export async function getEmployeeAttendance(userId: string): Promise<AttendanceR
  * Get workplace settings (office GPS coordinates & geofence)
  */
 export async function getWorkplaceSettings(): Promise<WorkplaceSettings> {
+  let settings: WorkplaceSettings = DEFAULT_WORKPLACE;
+
   if (db) {
     try {
       const ref = doc(db, 'organization', 'workplace');
       const snap = await getDoc(ref);
       if (snap.exists()) {
-        return snap.data() as WorkplaceSettings;
+        settings = { ...DEFAULT_WORKPLACE, ...(snap.data() as WorkplaceSettings) };
+        if (!settings.roadProjects || settings.roadProjects.length === 0) {
+          settings.roadProjects = DEFAULT_ROAD_PROJECTS;
+        }
+        return settings;
       }
     } catch (e) {
       console.warn('Error loading workplace settings from Firestore:', e);
@@ -662,7 +680,13 @@ export async function getWorkplaceSettings(): Promise<WorkplaceSettings> {
 
   try {
     const raw = localStorage.getItem(LOCAL_SETTINGS_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      settings = { ...DEFAULT_WORKPLACE, ...JSON.parse(raw) };
+      if (!settings.roadProjects || settings.roadProjects.length === 0) {
+        settings.roadProjects = DEFAULT_ROAD_PROJECTS;
+      }
+      return settings;
+    }
   } catch {}
   return DEFAULT_WORKPLACE;
 }

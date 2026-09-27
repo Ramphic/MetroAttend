@@ -111,6 +111,16 @@ export interface WorkplaceSettings {
   antiSpoofing?: boolean;
   deviceLock?: boolean;
   sessionTimeout?: number;
+  roadProjects?: RoadProjectSite[];
+}
+
+export interface RoadProjectSite {
+  id: string;
+  name: string;
+  corridor: string;
+  locality?: string;
+  status: 'Active' | 'Completed';
+  createdAt?: string;
 }
 
 export interface SystemNotification {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { NavProps, WorkplaceSettings } from '../../types';
+import { NavProps, WorkplaceSettings, RoadProjectSite } from '../../types';
 import AdminShell from '../../components/AdminShell';
 import { getWorkplaceSettings, saveWorkplaceSettings, DEFAULT_WORKPLACE, calculateDistanceMeters } from '../../lib/firebase';
 
@@ -13,6 +13,14 @@ export default function LocationSettings({ nav }: { nav: NavProps }) {
   const [detecting, setDetecting] = useState(false);
   const [detectStatus, setDetectStatus] = useState<string | null>(null);
 
+  // Road Projects & Field Sites State
+  const [roadProjects, setRoadProjects] = useState<RoadProjectSite[]>([]);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectCorridor, setNewProjectCorridor] = useState('');
+  const [newProjectLocality, setNewProjectLocality] = useState('');
+  const [projectMessage, setProjectMessage] = useState<string | null>(null);
+
   // Test GPS Simulator
   const [testLat, setTestLat] = useState('');
   const [testLng, setTestLng] = useState('');
@@ -25,6 +33,7 @@ export default function LocationSettings({ nav }: { nav: NavProps }) {
       setOfficeName(wp.officeName);
       setLatitude(wp.latitude.toString());
       setLongitude(wp.longitude.toString());
+      setRoadProjects(wp.roadProjects || []);
     });
   }, []);
 
@@ -35,6 +44,7 @@ export default function LocationSettings({ nav }: { nav: NavProps }) {
       latitude: parseFloat(latitude) || DEFAULT_WORKPLACE.latitude,
       longitude: parseFloat(longitude) || DEFAULT_WORKPLACE.longitude,
       geofenceRadius: radius,
+      roadProjects,
     };
     await saveWorkplaceSettings(updated);
     setSettings(updated);
@@ -95,20 +105,78 @@ export default function LocationSettings({ nav }: { nav: NavProps }) {
     });
   };
 
+  // Add Road Project to Live Registry
+  const handleAddRoadProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProjectName.trim()) return;
+
+    const newSite: RoadProjectSite = {
+      id: `proj_${Date.now()}`,
+      name: newProjectName.trim(),
+      corridor: newProjectCorridor.trim() || 'Active Road Corridor',
+      locality: newProjectLocality.trim() || 'Greater Accra Region',
+      status: 'Active',
+      createdAt: new Date().toISOString(),
+    };
+
+    const updatedProjects = [newSite, ...roadProjects];
+    const updated: WorkplaceSettings = {
+      ...settings,
+      roadProjects: updatedProjects,
+    };
+
+    await saveWorkplaceSettings(updated);
+    setSettings(updated);
+    setRoadProjects(updatedProjects);
+    setNewProjectName('');
+    setNewProjectCorridor('');
+    setNewProjectLocality('');
+    setShowAddModal(false);
+    setProjectMessage('✓ Road Project Corridor successfully added and live on field check-in!');
+    setTimeout(() => setProjectMessage(null), 4000);
+  };
+
+  const handleDeleteProject = async (id: string) => {
+    const updatedProjects = roadProjects.filter(p => p.id !== id);
+    const updated: WorkplaceSettings = {
+      ...settings,
+      roadProjects: updatedProjects,
+    };
+    await saveWorkplaceSettings(updated);
+    setSettings(updated);
+    setRoadProjects(updatedProjects);
+  };
+
+  const handleToggleStatus = async (id: string) => {
+    const updatedProjects = roadProjects.map(p => {
+      if (p.id === id) {
+        return { ...p, status: (p.status === 'Active' ? 'Completed' : 'Active') as 'Active' | 'Completed' };
+      }
+      return p;
+    });
+    const updated: WorkplaceSettings = {
+      ...settings,
+      roadProjects: updatedProjects,
+    };
+    await saveWorkplaceSettings(updated);
+    setSettings(updated);
+    setRoadProjects(updatedProjects);
+  };
+
   return (
     <AdminShell nav={nav}>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
-          <h1 className="text-2xl font-display font-800 text-slate-900">Workplace Geofence Configuration</h1>
-          <p className="text-muted text-sm mt-0.5">Manage live GPS coordinates and radius enforcement for employee check-ins</p>
+          <h1 className="text-2xl font-display font-800 text-slate-900">Workplace & Site Locations</h1>
+          <p className="text-muted text-sm mt-0.5">Manage live GPS coordinates, HQ geofence radius, and active road project corridors</p>
         </div>
         <button
           onClick={handleDetectGPS}
           disabled={detecting}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface border border-navy/20 text-navy font-display font-bold text-xs hover:bg-navy-50 transition-colors shadow-xs"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface border border-navy/20 text-navy font-display font-bold text-xs hover:bg-navy-50 transition-colors shadow-xs cursor-pointer"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-          {detecting ? 'Acquiring GPS...' : 'Detect My Current Location'}
+          {detecting ? 'Acquiring GPS...' : 'Detect My Current Office Location'}
         </button>
       </div>
 
@@ -119,6 +187,12 @@ export default function LocationSettings({ nav }: { nav: NavProps }) {
             : 'bg-amber-50 text-amber-800 border-amber-200'
         }`}>
           {detectStatus}
+        </div>
+      )}
+
+      {projectMessage && (
+        <div className="mb-4 px-4 py-3 rounded-xl text-xs font-display font-semibold bg-emerald-50 text-emerald-900 border border-emerald-300">
+          {projectMessage}
         </div>
       )}
 
@@ -195,21 +269,21 @@ export default function LocationSettings({ nav }: { nav: NavProps }) {
             <button
               type="button"
               onClick={() => handleSetPreset('Department of Urban Roads (DUR HQ)', 5.549200, -0.197800, 350)}
-              className="px-3 py-1.5 rounded-lg bg-white border border-border text-xs font-display font-semibold text-slate-700 hover:border-navy hover:text-navy transition-all shadow-xs"
+              className="px-3 py-1.5 rounded-lg bg-white border border-border text-xs font-display font-semibold text-slate-700 hover:border-navy hover:text-navy transition-all shadow-xs cursor-pointer"
             >
               🏢 DUR Head Office (Ministries)
             </button>
             <button
               type="button"
               onClick={() => handleSetPreset('DUR Greater Accra Regional Office', 5.572100, -0.223500, 350)}
-              className="px-3 py-1.5 rounded-lg bg-white border border-border text-xs font-display font-semibold text-slate-700 hover:border-navy hover:text-navy transition-all shadow-xs"
+              className="px-3 py-1.5 rounded-lg bg-white border border-border text-xs font-display font-semibold text-slate-700 hover:border-navy hover:text-navy transition-all shadow-xs cursor-pointer"
             >
               🏢 Greater Accra Regional
             </button>
             <button
               type="button"
               onClick={handleDetectGPS}
-              className="px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-300 text-xs font-display font-bold text-emerald-900 hover:bg-emerald-100 transition-all shadow-xs flex items-center gap-1"
+              className="px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-300 text-xs font-display font-bold text-emerald-900 hover:bg-emerald-100 transition-all shadow-xs flex items-center gap-1 cursor-pointer"
             >
               <span>🎯</span>
               <span>Set to My Current Office GPS</span>
@@ -219,7 +293,7 @@ export default function LocationSettings({ nav }: { nav: NavProps }) {
 
         {/* Config panel */}
         <div className="xl:col-span-2 space-y-4">
-          <div className="bg-white rounded-2xl border border-border p-5">
+          <div className="bg-white rounded-2xl border border-border p-5 shadow-xs">
             <div className="flex items-center justify-between mb-4">
               <div className="text-xs font-display font-700 text-slate-500 uppercase tracking-wide">Workplace Boundaries</div>
               <span className="bg-success-bg text-success text-[10px] font-display font-700 px-2.5 py-1 rounded-full">ACTIVE</span>
@@ -227,7 +301,7 @@ export default function LocationSettings({ nav }: { nav: NavProps }) {
 
             <div className="space-y-3 mb-4">
               <div>
-                <label className="block text-[10px] font-mono text-muted uppercase mb-1.5">Facility Name</label>
+                <label className="block text-[10px] font-mono text-muted uppercase mb-1.5 font-bold">Facility Name</label>
                 <input
                   type="text"
                   value={officeName}
@@ -237,7 +311,7 @@ export default function LocationSettings({ nav }: { nav: NavProps }) {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[10px] font-mono text-muted uppercase mb-1.5">Center Latitude</label>
+                  <label className="block text-[10px] font-mono text-muted uppercase mb-1.5 font-bold">Center Latitude</label>
                   <input
                     type="text"
                     value={latitude}
@@ -246,7 +320,7 @@ export default function LocationSettings({ nav }: { nav: NavProps }) {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-mono text-muted uppercase mb-1.5">Center Longitude</label>
+                  <label className="block text-[10px] font-mono text-muted uppercase mb-1.5 font-bold">Center Longitude</label>
                   <input
                     type="text"
                     value={longitude}
@@ -257,7 +331,7 @@ export default function LocationSettings({ nav }: { nav: NavProps }) {
               </div>
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-[10px] font-mono text-muted uppercase">Geofence Radius (meters)</label>
+                  <label className="text-[10px] font-mono text-muted uppercase font-bold">Geofence Radius (meters)</label>
                   <span className="text-xs font-mono font-bold text-navy">{radius}m</span>
                 </div>
                 <input
@@ -267,18 +341,18 @@ export default function LocationSettings({ nav }: { nav: NavProps }) {
                   step={10}
                   value={radius}
                   onChange={e => setRadius(Number(e.target.value))}
-                  className="w-full accent-navy"
+                  className="w-full accent-navy cursor-pointer"
                 />
                 <div className="flex justify-between text-[9px] font-mono text-muted mt-1">
                   <span>30m (Strict perimeter)</span>
-                  <span>500m (Campus-wide)</span>
+                  <span>500m (Compound-wide)</span>
                 </div>
               </div>
             </div>
 
             <button
               onClick={handleSave}
-              className={`w-full py-3.5 rounded-xl font-display font-700 text-sm transition-all shadow-sm ${
+              className={`w-full py-3.5 rounded-xl font-display font-700 text-sm transition-all shadow-sm cursor-pointer ${
                 saved ? 'bg-success text-white' : 'bg-navy text-white hover:bg-navy-dark active:scale-[0.98]'
               }`}
             >
@@ -312,7 +386,7 @@ export default function LocationSettings({ nav }: { nav: NavProps }) {
               <button
                 type="button"
                 onClick={handleTestCoordinate}
-                className="flex-1 py-2 rounded-xl bg-surface border border-navy/30 text-navy font-display font-bold text-xs hover:bg-navy-50 transition-colors"
+                className="flex-1 py-2 rounded-xl bg-surface border border-navy/30 text-navy font-display font-bold text-xs hover:bg-navy-50 transition-colors cursor-pointer"
               >
                 Calculate Distance
               </button>
@@ -323,7 +397,7 @@ export default function LocationSettings({ nav }: { nav: NavProps }) {
                   setTestLng(longitude);
                   setTestResult({ distance: 0, allowed: true });
                 }}
-                className="px-3 py-2 rounded-xl bg-surface border border-border text-slate-600 font-display font-bold text-xs hover:bg-slate-100 transition-colors"
+                className="px-3 py-2 rounded-xl bg-surface border border-border text-slate-600 font-display font-bold text-xs hover:bg-slate-100 transition-colors cursor-pointer"
               >
                 At Center
               </button>
@@ -340,6 +414,174 @@ export default function LocationSettings({ nav }: { nav: NavProps }) {
           </div>
         </div>
       </div>
+
+      {/* ROAD PROJECTS & ACTIVE SITES REGISTRY (Dynamic, non-hardcoded!) */}
+      <div className="mt-8 bg-white rounded-2xl border border-border p-6 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xl">🚧</span>
+              <h2 className="text-base font-display font-800 text-slate-900">
+                Active Road Project Corridors & Site Locations
+              </h2>
+            </div>
+            <p className="text-muted text-xs mt-0.5">
+              Configured road projects available for field engineers during mobile site check-in ({roadProjects.length} active sites)
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowAddModal(true)}
+            className="px-4 py-2.5 bg-navy hover:bg-navy-dark text-white rounded-xl text-xs font-display font-bold transition-all shadow-xs flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+          >
+            <span>+</span>
+            <span>Add Road Project Corridor</span>
+          </button>
+        </div>
+
+        <div className="rounded-xl border border-slate-100 overflow-x-auto">
+          <table className="w-full text-left">
+            <thead className="bg-slate-50 border-b border-slate-100 text-[10px] font-display font-bold text-slate-500 uppercase tracking-wider">
+              <tr>
+                <th className="px-4 py-3">Road Project / Corridor</th>
+                <th className="px-3 py-3">Corridor Category</th>
+                <th className="px-3 py-3">Locality / Sector</th>
+                <th className="px-3 py-3">Status</th>
+                <th className="px-3 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50 text-xs">
+              {roadProjects.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-muted font-mono text-xs">
+                    No road projects configured. Click "Add Road Project Corridor" to create one.
+                  </td>
+                </tr>
+              ) : (
+                roadProjects.map((proj) => (
+                  <tr key={proj.id} className="hover:bg-slate-50/70 transition-colors">
+                    <td className="px-4 py-3 font-display font-bold text-slate-900">
+                      {proj.name}
+                    </td>
+                    <td className="px-3 py-3 text-slate-600 font-display text-[11px]">
+                      {proj.corridor}
+                    </td>
+                    <td className="px-3 py-3 text-slate-600 font-mono text-[11px]">
+                      {proj.locality || 'Greater Accra'}
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-display font-bold ${
+                        proj.status === 'Active' 
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                          : 'bg-slate-100 text-slate-600'
+                      }`}>
+                        {proj.status}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 text-right space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleStatus(proj.id)}
+                        className="text-[11px] font-display font-semibold text-navy hover:underline cursor-pointer"
+                      >
+                        {proj.status === 'Active' ? 'Mark Completed' : 'Activate'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteProject(proj.id)}
+                        className="text-[11px] font-display font-semibold text-red-600 hover:underline cursor-pointer"
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Add Road Project Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🚧</span>
+                <h3 className="text-base font-display font-800 text-slate-900">
+                  Add Active Road Project Corridor
+                </h3>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setShowAddModal(false)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleAddRoadProject} className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-mono text-muted uppercase mb-1 font-bold">
+                  Road Project Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Accra-Nsawam Dualization & Slip Roads"
+                  value={newProjectName}
+                  onChange={e => setNewProjectName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-border text-xs font-display text-slate-900 focus:outline-none focus:ring-2 focus:ring-navy/20"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-mono text-muted uppercase mb-1 font-bold">
+                  Corridor / Arterial Classification
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. N6 Highway Arterial, Urban Drainage"
+                  value={newProjectCorridor}
+                  onChange={e => setNewProjectCorridor(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-border text-xs font-display text-slate-900 focus:outline-none focus:ring-2 focus:ring-navy/20"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-mono text-muted uppercase mb-1 font-bold">
+                  Operational Locality / Landmark
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Pokuase - Amasaman, Accra West"
+                  value={newProjectLocality}
+                  onChange={e => setNewProjectLocality(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-border text-xs font-display text-slate-900 focus:outline-none focus:ring-2 focus:ring-navy/20"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-border text-slate-600 font-display font-bold text-xs hover:bg-slate-50 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-xl bg-navy text-white font-display font-bold text-xs hover:bg-navy-dark transition-all cursor-pointer shadow-xs"
+                >
+                  Save Road Project
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </AdminShell>
   );
 }

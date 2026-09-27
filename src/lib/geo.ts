@@ -50,14 +50,14 @@ export function getNearestLandmark(lat: number, lng: number): string {
     }
   }
 
-  if (minDistance <= 2500) {
+  if (minDistance <= 3000) {
     return closest.name;
   }
-  if (minDistance <= 8000) {
+  if (minDistance <= 10000) {
     return `Near ${closest.name}`;
   }
 
-  return `${closest.name} District`;
+  return `Site Coordinates (${lat.toFixed(4)}°, ${lng.toFixed(4)}°)`;
 }
 
 /**
@@ -71,9 +71,10 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string> 
 
   const fallback = getNearestLandmark(lat, lng);
 
+  // Strategy 1: Try OpenStreetMap Nominatim
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2200);
+    const timeoutId = setTimeout(() => controller.abort(), 4500);
 
     const res = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=16&addressdetails=1`,
@@ -108,7 +109,32 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string> 
       }
     }
   } catch (err) {
-    // Network delay, CORS or offline - seamless fallback
+    // Nominatim timeout or offline, continue to fallback API
+  }
+
+  // Strategy 2: Fast Client Reverse Geocode API
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
+
+    const res = await fetch(
+      `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`,
+      { signal: controller.signal }
+    );
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const data = await res.json();
+      const locality = data.locality || data.city || '';
+      const suburb = data.localityInfo?.administrative?.[3]?.name || data.localityInfo?.administrative?.[2]?.name || '';
+      const area = [locality, suburb].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(', ');
+      if (area) {
+        GEO_CACHE.set(cacheKey, area);
+        return area;
+      }
+    }
+  } catch (err) {
+    // Fall back to nearest landmark
   }
 
   GEO_CACHE.set(cacheKey, fallback);
