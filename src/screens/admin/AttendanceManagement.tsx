@@ -7,7 +7,9 @@ import {
   updateAttendanceStatus, 
   deleteAttendanceRecord, 
   exportRecordsToCSV,
-  getLocalDateString 
+  getLocalDateString,
+  resetAllTodayAttendance,
+  resetTodayAttendance
 } from '../../lib/firebase';
 import { getNearestLandmark } from '../../lib/geo';
 
@@ -20,6 +22,8 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
   const [selectedDate, setSelectedDate] = useState(() => getLocalDateString());
   const [editingRow, setEditingRow] = useState<AttendanceRecord | null>(null);
   const [savingStatus, setSavingStatus] = useState(false);
+  const [resettingAll, setResettingAll] = useState(false);
+  const [resetMsg, setResetMsg] = useState<string | null>(null);
 
   useEffect(() => {
     loadRecords();
@@ -63,6 +67,37 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
     setRecords(prev => prev.filter(r => r.id !== recordId));
   };
 
+  const handleResetAllToday = async () => {
+    if (!window.confirm("Admin Reset: Wipe ALL attendance records for today? This allows you to test employee check-in and check-out fresh.")) return;
+    setResettingAll(true);
+    try {
+      await resetAllTodayAttendance();
+      nav.setCheckInStatus('not-checked-in');
+      nav.setCheckInTime('');
+      nav.setCheckOutTime('');
+      await loadRecords();
+      setResetMsg("✓ Today's attendance records have been reset for all staff! You can test clock-in fresh.");
+      setTimeout(() => setResetMsg(null), 5000);
+    } catch (err) {
+      console.error('Error resetting all today:', err);
+    } finally {
+      setResettingAll(false);
+    }
+  };
+
+  const handleResetSingleToday = async (userId: string, name?: string) => {
+    if (!userId) return;
+    if (!window.confirm(`Admin Reset: Clear today's check-in/out record for ${name || 'this staff member'}?`)) return;
+    try {
+      await resetTodayAttendance(userId);
+      await loadRecords();
+      setResetMsg(`✓ Today's record for ${name || 'staff member'} was reset.`);
+      setTimeout(() => setResetMsg(null), 4000);
+    } catch (err) {
+      console.error('Error resetting staff today:', err);
+    }
+  };
+
   return (
     <AdminShell nav={nav}>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -72,6 +107,16 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
         </div>
         <div className="flex items-center gap-2">
           <button 
+            type="button"
+            onClick={handleResetAllToday}
+            disabled={resettingAll}
+            className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 px-3.5 py-2.5 rounded-xl font-display font-bold text-xs transition-all shadow-xs cursor-pointer disabled:opacity-60"
+            title="Wipe today's attendance records to test check-in fresh"
+          >
+            <span>↺</span>
+            <span>{resettingAll ? 'Resetting…' : "Reset Today's Records (Test)"}</span>
+          </button>
+          <button 
             onClick={() => exportRecordsToCSV(filtered, `attendance_${selectedDate}.csv`)}
             className="flex items-center gap-2 bg-navy text-white px-4 py-2.5 rounded-xl font-display font-semibold text-xs hover:bg-navy-dark transition-all shadow-xs cursor-pointer"
           >
@@ -80,6 +125,16 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
           </button>
         </div>
       </div>
+
+      {resetMsg && (
+        <div className="mb-4 p-3.5 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-900 text-xs font-display font-bold flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2">
+            <span>✓</span>
+            <span>{resetMsg}</span>
+          </div>
+          <button onClick={() => setResetMsg(null)} className="text-emerald-700 font-bold ml-2 cursor-pointer">✕</button>
+        </div>
+      )}
 
       {/* Date & Filter Toolbar */}
       <div className="bg-white rounded-2xl border border-border p-4 mb-5 shadow-xs">
@@ -250,6 +305,18 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
                             {row.locationAddress || (row.latitude && row.longitude ? getNearestLandmark(row.latitude, row.longitude) : 'Field Project Corridor')}
                           </span>
                         </span>
+                        {row.latitude && row.longitude && (
+                          <a
+                            href={`https://www.google.com/maps/search/?api=1&query=${row.latitude},${row.longitude}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[10px] text-navy font-display font-bold hover:underline flex items-center gap-1 mt-0.5"
+                            title="View coordinates on Google Maps"
+                          >
+                            <span>🗺️</span>
+                            <span>View on Google Maps</span>
+                          </a>
+                        )}
                       </div>
                     ) : row.locationVerified ? (
                       <div className="flex flex-col gap-0.5">
@@ -260,6 +327,18 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
                         <span className="text-[11px] font-display font-medium text-slate-600">
                           {row.locationAddress || 'Ministries, Central Accra'} {row.distanceMeters ? `(~${row.distanceMeters}m)` : ''}
                         </span>
+                        {row.latitude && row.longitude && (
+                          <a
+                            href={`https://www.google.com/maps/search/?api=1&query=${row.latitude},${row.longitude}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[10px] text-navy font-display font-bold hover:underline flex items-center gap-1 mt-0.5"
+                            title="View coordinates on Google Maps"
+                          >
+                            <span>🗺️</span>
+                            <span>View on Google Maps</span>
+                          </a>
+                        )}
                       </div>
                     ) : (
                       <span className="text-danger text-[10px] font-display font-semibold flex items-center gap-1">
@@ -300,15 +379,23 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
                     <div className="flex items-center gap-1.5">
                       <button 
                         onClick={() => setEditingRow(row)}
-                        className="text-navy text-[11px] font-display font-bold px-2.5 py-1 rounded-lg hover:bg-navy-50 transition-colors border border-navy/20"
+                        className="text-navy text-[11px] font-display font-bold px-2.5 py-1 rounded-lg hover:bg-navy-50 transition-colors border border-navy/20 cursor-pointer"
                       >
                         Adjust Status
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleResetSingleToday(row.userId || row.employeeId || '', row.name)}
+                        title="Reset this employee's check-in/out for today"
+                        className="text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-[10px] font-display font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                      >
+                        ↺ Reset
                       </button>
                       {row.id && (
                         <button
                           onClick={() => handleDeleteRecord(row.id!)}
                           title="Delete attendance record"
-                          className="text-slate-300 hover:text-red-500 p-1.5 rounded-lg transition-colors"
+                          className="text-slate-300 hover:text-red-500 p-1.5 rounded-lg transition-colors cursor-pointer"
                         >
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
                         </button>

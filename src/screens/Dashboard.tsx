@@ -13,17 +13,20 @@ import {
   getNotifications,
   calculateDistanceMeters,
   getLocalDateString,
+  resetTodayAttendance,
   DEFAULT_WORKPLACE 
 } from '../lib/firebase';
 
 export default function Dashboard({ nav }: { nav: NavProps }) {
-  const { profile, user } = useAuth();
+  const { profile, user, isAdmin } = useAuth();
   const [workplace, setWorkplace] = useState<WorkplaceSettings>(DEFAULT_WORKPLACE);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [latestAnnouncement, setLatestAnnouncement] = useState<SystemNotification | null>(null);
   const [checkingOut, setCheckingOut] = useState(false);
   const [cancellingCheckOut, setCancellingCheckOut] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [resettingToday, setResettingToday] = useState(false);
+  const [resetSuccessToast, setResetSuccessToast] = useState<string | null>(null);
 
   // Absence reporting state
   const [showAbsenceModal, setShowAbsenceModal] = useState(false);
@@ -217,6 +220,25 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
     setShowCancelModal(false);
   };
 
+  const handleAdminResetToday = async () => {
+    if (!window.confirm("Admin Testing Reset: Are you sure you want to wipe today's attendance record and session state so you can test checking in and out again?")) return;
+    setResettingToday(true);
+    try {
+      await resetTodayAttendance(uid);
+      nav.setCheckInStatus('not-checked-in');
+      nav.setCheckInTime('');
+      nav.setCheckOutTime('');
+      const updatedRecords = await getEmployeeAttendance(uid);
+      setRecords(updatedRecords);
+      setResetSuccessToast("✓ Today's check-in record was successfully reset! You can now verify GPS and test check-in again.");
+      setTimeout(() => setResetSuccessToast(null), 6000);
+    } catch (err) {
+      console.error('Error resetting today attendance:', err);
+    } finally {
+      setResettingToday(false);
+    }
+  };
+
   return (
     <MobileShell nav={nav} showBottomNav currentTab="home">
       {/* Top Banner */}
@@ -292,6 +314,17 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
               <h4 className="text-xs font-display font-bold text-slate-900 mt-0.5">{latestAnnouncement.title}</h4>
               <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">{latestAnnouncement.body}</p>
             </div>
+          </div>
+        )}
+
+        {/* Reset Success Feedback Toast */}
+        {resetSuccessToast && (
+          <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-4 flex items-center justify-between text-xs font-display font-bold text-emerald-950 shadow-xs">
+            <div className="flex items-center gap-2">
+              <span className="text-base">✓</span>
+              <span>{resetSuccessToast}</span>
+            </div>
+            <button onClick={() => setResetSuccessToast(null)} className="text-emerald-700 font-bold ml-3 cursor-pointer">✕</button>
           </div>
         )}
 
@@ -485,6 +518,37 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
                       ↩ Resume Shift & Re-Check Out
                     </button>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Admin Testing Reset Control (Visible to Admin otoojoojotandoh100@gmail.com) */}
+            {isAdmin && (
+              <div className="mt-6 pt-5 border-t border-slate-100">
+                <div className="p-4 bg-amber-500/10 border-2 border-dashed border-amber-400 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-bold text-base flex-shrink-0">
+                      🛠️
+                    </div>
+                    <div>
+                      <div className="text-xs font-display font-800 text-slate-900 flex items-center gap-2">
+                        <span>Admin Testing Reset</span>
+                        <span className="text-[10px] font-mono bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full font-bold">Live Test Mode</span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 mt-0.5">
+                        Wipe today's attendance record so you can test GPS verification & check-in continuously.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAdminResetToday}
+                    disabled={resettingToday}
+                    className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-display font-800 text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer disabled:opacity-60"
+                  >
+                    <span>↺</span>
+                    <span>{resettingToday ? 'Resetting Record…' : "Reset Today's Check-In"}</span>
+                  </button>
                 </div>
               </div>
             )}

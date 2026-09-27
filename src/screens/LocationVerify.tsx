@@ -11,7 +11,7 @@ import {
   getLocalDateString,
   DEFAULT_WORKPLACE 
 } from '../lib/firebase';
-import { reverseGeocode, getNearestLandmark } from '../lib/geo';
+import { reverseGeocode, getNearestLandmark, getClosestTownName, POPULAR_GHANA_TOWNS } from '../lib/geo';
 
 type Stage = 'checking' | 'verified' | 'failed';
 type DutyMode = 'Office HQ' | 'Field Site';
@@ -34,6 +34,8 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
   const [calibratedNotice, setCalibratedNotice] = useState<string | null>(null);
 
   // Field Site Specific State
+  const [selectedTown, setSelectedTown] = useState<string>('Dansoman');
+  const [customTown, setCustomTown] = useState<string>('');
   const [selectedCorridor, setSelectedCorridor] = useState<string>('');
   const [customCorridor, setCustomCorridor] = useState<string>('');
   const [siteNotes, setSiteNotes] = useState<string>('');
@@ -94,6 +96,10 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
 
         // Fetch authentic physical place name from OpenStreetMap + BigDataCloud
         reverseGeocode(lat, lng).then(setDetectedAddress);
+        const autoTown = getClosestTownName(lat, lng);
+        if (autoTown) {
+          setSelectedTown(autoTown);
+        }
 
         // Calculate distance against current office center
         const wp = await getWorkplaceSettings();
@@ -193,13 +199,21 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
     const employeeId = profile?.staffId || profile?.id || user?.uid || `MWI-${Math.floor(1000 + Math.random() * 9000)}`;
     const employeeName = profile?.name || user?.displayName || 'Staff Member';
 
+    const finalTown = selectedTown === 'Other' ? (customTown.trim() || 'Field Site') : (selectedTown || 'Field Site');
+    const baseCorridor = selectedCorridor === 'Other Active Road Corridor (Custom)' 
+      ? (customCorridor.trim() || 'Road Project Corridor') 
+      : (selectedCorridor || 'Active Road Corridor');
+
     const finalSiteName = isFieldSite 
-      ? (selectedCorridor === 'Other Active Road Corridor (Custom)' ? (customCorridor.trim() || 'Road Project Corridor') : (selectedCorridor || 'Active Road Corridor'))
+      ? `${finalTown} — ${baseCorridor}`
       : workplace.officeName;
 
     const lat = userCoords.lat;
     const lng = userCoords.lng;
-    const placeAddress = detectedAddress || getNearestLandmark(lat, lng);
+    const rawAddress = detectedAddress || getNearestLandmark(lat, lng);
+    const placeAddress = isFieldSite 
+      ? (rawAddress.toLowerCase().includes(finalTown.toLowerCase()) ? rawAddress : `${finalTown}, ${rawAddress}`)
+      : rawAddress;
 
     try {
       await recordCheckIn({
@@ -543,20 +557,39 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
                 </div>
 
                 {/* Verified Field Locality Card */}
-                <div className="bg-white rounded-xl p-4 border border-amber-200 shadow-2xs space-y-1.5">
+                <div className="bg-white rounded-xl p-4 border border-amber-200 shadow-2xs space-y-2.5">
                   <div className="text-[10px] font-mono text-muted uppercase font-bold flex items-center justify-between">
                     <span>Physical Field Locality</span>
                     <span className="text-[9px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-bold border border-emerald-200">
                       {userCoords?.accuracy ? `±${userCoords.accuracy}m Accuracy` : 'GPS Acquiring…'}
                     </span>
                   </div>
-                  <div className="text-base font-display font-extrabold text-slate-800 flex items-center gap-2">
-                    <span className="text-lg">📍</span>
-                    <span className="truncate">
-                      {detectedAddress || (userCoords ? getNearestLandmark(userCoords.lat, userCoords.lng) : 'Detecting your live position…')}
-                    </span>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2">
+                      <span className="text-xl flex-shrink-0 mt-0.5">📍</span>
+                      <div>
+                        <div className="text-sm font-display font-extrabold text-slate-900 leading-snug">
+                          {selectedTown === 'Other' ? (customTown || 'Field Site') : selectedTown}
+                        </div>
+                        <div className="text-xs text-slate-600 mt-0.5 leading-tight">
+                          {detectedAddress || (userCoords ? getNearestLandmark(userCoords.lat, userCoords.lng) : 'Detecting your live position…')}
+                        </div>
+                      </div>
+                    </div>
+                    {userCoords && (
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${userCoords.lat},${userCoords.lng}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-shrink-0 px-2.5 py-1 bg-slate-50 hover:bg-slate-100 text-navy font-display font-bold text-[10px] rounded-lg border border-slate-200 shadow-2xs flex items-center gap-1 transition-colors"
+                        title="Verify coordinates on Google Maps"
+                      >
+                        <span>🗺️</span>
+                        <span>Google Maps</span>
+                      </a>
+                    )}
                   </div>
-                  <div className="text-[10px] font-mono text-slate-500">
+                  <div className="text-[10px] font-mono text-slate-500 pt-1 border-t border-slate-100">
                     {userCoords ? (
                       <span>GPS Satellite Locked: <strong>{userCoords.lat.toFixed(5)}° N, {userCoords.lng.toFixed(5)}° W</strong></span>
                     ) : (
@@ -572,7 +605,7 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
                   <span className="text-lg">🛰️</span>
                   <div>
                     <div className="font-display font-bold">Tamper-Proof Field Geotag</div>
-                    <div className="text-white/60 text-[10px]">Exact place name & satellite coordinates stamped to audit ledger</div>
+                    <div className="text-white/60 text-[10px]">Exact town name & satellite coordinates stamped to audit ledger</div>
                   </div>
                 </div>
                 <button
@@ -594,10 +627,54 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
                   <span>Project Corridor Selection</span>
                 </div>
                 <p className="text-xs text-muted mb-4">
-                  Select the active road project or inspection site where you are currently deployed:
+                  Select your deployed town and active road project or inspection site:
                 </p>
 
-                <div className="space-y-3">
+                <div className="space-y-3.5">
+                  {/* Town / Locality Chips */}
+                  <div>
+                    <label className="text-[11px] font-display font-bold text-slate-700 uppercase tracking-wide block mb-1.5 flex items-center justify-between">
+                      <span>Town / Area Locality</span>
+                      <span className="text-[10px] text-amber-800 font-mono font-normal">Auto-detected or Tap</span>
+                    </label>
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {['Dansoman', 'Kasoa', 'Amasaman', 'Spintex', 'Pokuase', 'Lapaz', 'Tema', 'Adenta'].map(town => (
+                        <button
+                          type="button"
+                          key={town}
+                          onClick={() => setSelectedTown(town)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-display font-bold transition-all cursor-pointer ${
+                            selectedTown === town
+                              ? 'bg-amber-500 text-slate-950 shadow-2xs scale-102 ring-2 ring-amber-400/50'
+                              : 'bg-white border border-slate-200 text-slate-600 hover:border-amber-400'
+                          }`}
+                        >
+                          {town}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedTown('Other')}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-display font-bold transition-all cursor-pointer ${
+                          selectedTown === 'Other'
+                            ? 'bg-amber-500 text-slate-950 shadow-2xs scale-102 ring-2 ring-amber-400/50'
+                            : 'bg-white border border-slate-200 text-slate-600 hover:border-amber-400'
+                        }`}
+                      >
+                        Other…
+                      </button>
+                    </div>
+                    {selectedTown === 'Other' && (
+                      <input
+                        type="text"
+                        placeholder="Enter town name (e.g. Kokrobite, Dome, Madina)"
+                        value={customTown}
+                        onChange={e => setCustomTown(e.target.value)}
+                        className="w-full bg-white border border-amber-300 rounded-xl px-3 py-2 text-xs font-display text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/40 mb-2"
+                      />
+                    )}
+                  </div>
+
                   <div>
                     <label className="text-[11px] font-display font-bold text-slate-600 uppercase tracking-wide block mb-1.5">
                       Road Project Corridor
