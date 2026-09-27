@@ -8,12 +8,11 @@ import {
   cancelCheckOut,
   recordAbsence,
   cancelAbsence,
-  resetTodayAttendance,
-  resetAllTodayAttendance,
   addNotification, 
   getEmployeeAttendance,
   getNotifications,
   calculateDistanceMeters,
+  getLocalDateString,
   DEFAULT_WORKPLACE 
 } from '../lib/firebase';
 
@@ -33,32 +32,45 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
   const [reportingAbsence, setReportingAbsence] = useState(false);
   const [cancellingAbsence, setCancellingAbsence] = useState(false);
 
-  // Reset Demo Modal State
-  const [showResetConfirmModal, setShowResetConfirmModal] = useState(false);
-  const [resetting, setResetting] = useState(false);
-  const [resetScope, setResetScope] = useState<'me' | 'all'>('me');
-  const [resetToast, setResetToast] = useState<string | null>(null);
-
   const uid = user?.uid || profile?.id || profile?.uid || 'emp_1';
 
   useEffect(() => {
     getWorkplaceSettings().then(setWorkplace);
-    if (uid) {
-      getEmployeeAttendance(uid).then(setRecords);
-      getNotifications(uid).then((all) => {
-        const broadcasts = all.filter(n => n.broadcast || n.type === 'warning');
-        if (broadcasts.length > 0) {
-          setLatestAnnouncement(broadcasts[0]);
-        }
-      });
-    }
+    const loadData = () => {
+      if (uid) {
+        getEmployeeAttendance(uid).then(setRecords);
+        getNotifications(uid).then((all) => {
+          const broadcasts = all.filter(n => n.broadcast || n.type === 'warning');
+          if (broadcasts.length > 0) {
+            setLatestAnnouncement(broadcasts[0]);
+          }
+        });
+      }
+    };
+
+    loadData();
+
+    // Auto-refresh attendance records on focus or visibility change (e.g. morning phone wake)
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadData();
+      }
+    };
+
+    window.addEventListener('focus', loadData);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      window.removeEventListener('focus', loadData);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, [uid, nav.checkInStatus]);
 
   const isCheckedIn = nav.checkInStatus === 'checked-in';
   const isCheckedOut = nav.checkInStatus === 'checked-out';
   const isAbsent = nav.checkInStatus === 'absent';
-  const todayStr = new Date().toISOString().split('T')[0];
-  const todayRecord = records.find(r => r.date === todayStr || r.date === 'Today');
+  const todayStr = getLocalDateString();
+  const todayRecord = records.find(r => r.date === todayStr);
   const today = new Date();
   const dateStr = today.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -205,32 +217,6 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
     setShowCancelModal(false);
   };
 
-  const handleExecuteReset = async () => {
-    setResetting(true);
-    try {
-      if (resetScope === 'all') {
-        await resetAllTodayAttendance();
-      } else {
-        await resetTodayAttendance(uid);
-      }
-      nav.setCheckInStatus('not-checked-in');
-      nav.setCheckInTime('');
-      nav.setCheckOutTime('');
-      const updated = await getEmployeeAttendance(uid);
-      setRecords(updated);
-      setShowResetConfirmModal(false);
-      setResetToast(resetScope === 'all' 
-        ? '✓ All organization records for today cleared for demo!' 
-        : '✓ Attendance for today reset! You can now clock in again.'
-      );
-      setTimeout(() => setResetToast(null), 3500);
-    } catch (err) {
-      console.error('Error resetting attendance:', err);
-    } finally {
-      setResetting(false);
-    }
-  };
-
   return (
     <MobileShell nav={nav} showBottomNav currentTab="home">
       {/* Top Banner */}
@@ -346,20 +332,6 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
                     ABSENT
                   </span>
                 )}
-
-                {/* Reset button in card header */}
-                <button
-                  type="button"
-                  onClick={() => setShowResetConfirmModal(true)}
-                  title="Demo Reset: Clear today's attendance"
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-navy hover:bg-slate-100 border border-slate-200 hover:border-slate-300 transition-all cursor-pointer flex items-center gap-1 group"
-                >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:rotate-180 transition-transform duration-500">
-                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-                    <path d="M3 3v5h5"/>
-                  </svg>
-                  <span className="text-[10px] font-mono font-bold hidden sm:inline text-slate-500 group-hover:text-navy">Reset</span>
-                </button>
               </div>
             </div>
 
@@ -406,31 +378,16 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
             {/* Action Buttons */}
             {!isCheckedIn && !isCheckedOut && !isAbsent && (
               <div className="space-y-3">
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => nav.navigate('location-verify')}
-                    className="flex-1 bg-navy text-white py-4 rounded-2xl font-display font-bold text-base transition-all hover:bg-navy-dark active:scale-[0.99] shadow-md flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/>
-                      <circle cx="12" cy="10" r="3"/>
-                    </svg>
-                    Verify GPS Location & Check In
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowResetConfirmModal(true)}
-                    title="Demo Reset: Clear today's session"
-                    className="px-3.5 sm:px-4 py-4 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-navy border border-slate-200 hover:border-slate-300 font-display font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs group"
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:rotate-180 transition-transform duration-500">
-                      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-                      <path d="M3 3v5h5"/>
-                    </svg>
-                    <span className="hidden sm:inline">Reset</span>
-                  </button>
-                </div>
+                <button
+                  onClick={() => nav.navigate('location-verify')}
+                  className="w-full bg-navy text-white py-4 rounded-2xl font-display font-bold text-base transition-all hover:bg-navy-dark active:scale-[0.99] shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/>
+                    <circle cx="12" cy="10" r="3"/>
+                  </svg>
+                  Verify GPS Location & Check In
+                </button>
 
                 <button
                   type="button"
@@ -445,32 +402,17 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
 
             {isCheckedIn && (
               <div className="space-y-3">
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleCheckOut}
-                    disabled={checkingOut}
-                    className="flex-1 bg-danger text-white py-4 rounded-2xl font-display font-bold text-base transition-all hover:bg-red-700 active:scale-[0.99] shadow-md flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                      <circle cx="12" cy="12" r="10"/>
-                      <polyline points="12 6 12 12 16 14"/>
-                    </svg>
-                    {checkingOut ? 'Verifying Location & Checking Out…' : 'Record Daily Check Out'}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowResetConfirmModal(true)}
-                    title="Demo Reset: Clear today's check-in"
-                    className="px-3.5 sm:px-4 py-4 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-navy border border-slate-200 hover:border-slate-300 font-display font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs group"
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:rotate-180 transition-transform duration-500">
-                      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-                      <path d="M3 3v5h5"/>
-                    </svg>
-                    <span className="hidden sm:inline">Reset</span>
-                  </button>
-                </div>
+                <button
+                  onClick={handleCheckOut}
+                  disabled={checkingOut}
+                  className="w-full bg-danger text-white py-4 rounded-2xl font-display font-bold text-base transition-all hover:bg-red-700 active:scale-[0.99] shadow-md flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                  {checkingOut ? 'Verifying Location & Checking Out…' : 'Record Daily Check Out'}
+                </button>
               </div>
             )}
 
@@ -501,7 +443,7 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
                       You can retract your absence notice and proceed to verify GPS location to check in.
                     </p>
                   </div>
-                  <div className="flex gap-2">
+                  <div>
                     <button
                       type="button"
                       onClick={handleCancelAbsence}
@@ -509,17 +451,6 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
                       className="px-3.5 py-2.5 rounded-xl bg-white border border-navy/30 text-navy font-display font-bold text-xs hover:bg-navy-50 transition-colors shadow-2xs whitespace-nowrap self-start sm:self-auto cursor-pointer disabled:opacity-60"
                     >
                       {cancellingAbsence ? 'Cancelling…' : '↩ Cancel Notice & Check In'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowResetConfirmModal(true)}
-                      className="px-3.5 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-display font-bold text-xs transition-colors shadow-2xs whitespace-nowrap self-start sm:self-auto cursor-pointer flex items-center gap-1"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-                        <path d="M3 3v5h5"/>
-                      </svg>
-                      Reset (Demo)
                     </button>
                   </div>
                 </div>
@@ -545,24 +476,13 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
                       You can cancel your previous check-out, return to active duty, and check out again when leaving.
                     </p>
                   </div>
-                  <div className="flex gap-2">
+                  <div>
                     <button
                       type="button"
                       onClick={() => setShowCancelModal(true)}
                       className="px-4 py-2 rounded-xl bg-white border border-navy/30 text-navy font-display font-bold text-xs hover:bg-navy-50 transition-colors shadow-2xs whitespace-nowrap self-start sm:self-auto"
                     >
                       ↩ Resume Shift & Re-Check Out
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowResetConfirmModal(true)}
-                      className="px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-display font-bold text-xs transition-colors shadow-2xs whitespace-nowrap self-start sm:self-auto cursor-pointer flex items-center gap-1"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-                        <path d="M3 3v5h5"/>
-                      </svg>
-                      Reset (Demo)
                     </button>
                   </div>
                 </div>
@@ -741,111 +661,6 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* Toast Notification */}
-      {resetToast && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl text-xs font-display font-semibold flex items-center gap-2 border border-slate-700 animate-in fade-in slide-in-from-top-2">
-          <span>✓</span>
-          <span>{resetToast}</span>
-        </div>
-      )}
-
-      {/* Demo Reset Confirmation Modal */}
-      {showResetConfirmModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-border animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-800 flex items-center justify-center text-lg font-bold">
-                  ↻
-                </div>
-                <div>
-                  <h3 className="text-base font-display font-800 text-slate-900">Reset Today's Attendance</h3>
-                  <p className="text-xs text-muted">Demo & Presentation Helper</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowResetConfirmModal(false)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-600 leading-relaxed mb-4">
-              For your presentation and testing, resetting removes today's recorded attendance so you can immediately demonstrate the check-in, GPS verification, or absence reporting flow again.
-            </p>
-
-            {/* Scope Selection */}
-            <div className="space-y-2 mb-5">
-              <label
-                onClick={() => setResetScope('me')}
-                className={`flex items-center gap-3 p-3 rounded-xl border text-xs font-display font-semibold cursor-pointer transition-all ${
-                  resetScope === 'me'
-                    ? 'border-navy bg-navy/5 text-navy'
-                    : 'border-border bg-surface text-slate-700'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="resetScope"
-                  checked={resetScope === 'me'}
-                  onChange={() => setResetScope('me')}
-                  className="accent-navy w-4 h-4"
-                />
-                <div>
-                  <div className="font-bold">Reset only my profile ({firstName})</div>
-                  <div className="text-[11px] text-muted font-normal">Wipes your check-in, checkout, or absence for today</div>
-                </div>
-              </label>
-
-              <label
-                onClick={() => setResetScope('all')}
-                className={`flex items-center gap-3 p-3 rounded-xl border text-xs font-display font-semibold cursor-pointer transition-all ${
-                  resetScope === 'all'
-                    ? 'border-red-500 bg-red-50/60 text-red-900'
-                    : 'border-border bg-surface text-slate-700'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="resetScope"
-                  checked={resetScope === 'all'}
-                  onChange={() => setResetScope('all')}
-                  className="accent-red-600 w-4 h-4"
-                />
-                <div>
-                  <div className="font-bold">Reset ALL organization attendance today</div>
-                  <div className="text-[11px] text-muted font-normal">Provides a completely clean attendance roster for demoing</div>
-                </div>
-              </label>
-            </div>
-
-            <div className="flex gap-2.5">
-              <button
-                type="button"
-                onClick={() => setShowResetConfirmModal(false)}
-                className="flex-1 py-3 rounded-xl border border-border text-slate-600 font-display font-bold text-xs hover:bg-surface cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleExecuteReset}
-                disabled={resetting}
-                className="flex-1 py-3 rounded-xl bg-navy text-white font-display font-bold text-xs hover:bg-navy-dark transition-all shadow-md active:scale-[0.98] disabled:opacity-60 cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-                  <path d="M3 3v5h5"/>
-                </svg>
-                <span>{resetting ? 'Resetting…' : 'Confirm Reset'}</span>
-              </button>
-            </div>
           </div>
         </div>
       )}

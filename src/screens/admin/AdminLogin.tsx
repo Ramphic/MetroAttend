@@ -27,12 +27,6 @@ export default function AdminLogin({ nav }: { nav: NavProps }) {
     }
   };
 
-  const handleDemoAdminBypass = () => {
-    nav.onAdminBypass?.();
-    nav.setAdminTab('dashboard');
-    nav.navigate('admin-dashboard');
-  };
-
   return (
     <div className="min-h-screen bg-navy-dark flex">
       {/* Left panel */}
@@ -119,14 +113,6 @@ export default function AdminLogin({ nav }: { nav: NavProps }) {
                 <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
               </svg>
               {loading ? 'Verifying Admin Privileges…' : 'Sign in as Administrator'}
-            </button>
-
-            <button
-              onClick={handleDemoAdminBypass}
-              type="button"
-              className="w-full bg-surface border border-slate-200 text-slate-700 py-3 rounded-xl font-display font-semibold text-xs hover:bg-slate-100 transition-all flex items-center justify-center gap-2"
-            >
-              <span>👁</span> Preview Admin Console (Instant Access)
             </button>
           </div>
 

@@ -238,7 +238,7 @@ export default function Landing({ nav }: { nav: NavProps }) {
           </button>
           {!isConfigured && (
             <p className="text-white/25 text-[10px] font-mono mt-1">
-              (Demo mode active — add Firebase keys in .env for live cloud sync)
+              (Offline mode — add Firebase keys in .env for live cloud sync)
             </p>
           )}
         </div>

@@ -100,6 +100,16 @@ export const DESIGNATED_ADMIN_EMAIL = (
 ).trim().toLowerCase();
 
 /**
+ * Return current local calendar date formatted as YYYY-MM-DD
+ */
+export function getLocalDateString(d: Date = new Date()): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
  * Haversine distance formula in meters between two GPS points
  */
 export function calculateDistanceMeters(
@@ -172,7 +182,9 @@ function getLocalAttendance(): AttendanceRecord[] {
     const raw = localStorage.getItem(LOCAL_ATTENDANCE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((r: AttendanceRecord) => !r.name?.includes('Kwame Mensah')) : [];
+    return Array.isArray(parsed) 
+      ? parsed.filter((r: AttendanceRecord) => !r.name?.includes('Kwame Mensah') && r.date !== 'Today') 
+      : [];
   } catch {
     return [];
   }
@@ -291,7 +303,7 @@ export async function toggleEmployeeStatus(uid: string, currentStatus: 'Active' 
  */
 export async function recordCheckIn(record: AttendanceRecord): Promise<string> {
   const sig = getDeviceSignature();
-  const todayStr = record.date || new Date().toISOString().split('T')[0];
+  const todayStr = record.date || getLocalDateString();
 
   const enrichedRecord: AttendanceRecord = {
     ...record,
@@ -349,7 +361,7 @@ export async function recordCheckIn(record: AttendanceRecord): Promise<string> {
   // Local storage fallback
   const local = getLocalAttendance();
   const localCollision = local.find(r => 
-    (r.date === todayStr || r.date === 'Today') && 
+    r.date === todayStr && 
     r.deviceId === sig.deviceId && 
     (r.userId || r.employeeId) !== (record.userId || record.employeeId)
   );
@@ -380,7 +392,7 @@ export async function recordCheckIn(record: AttendanceRecord): Promise<string> {
  * Record a check-out
  */
 export async function recordCheckOut(userId: string, checkOutTime: string): Promise<void> {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
 
   if (db) {
     try {
@@ -401,7 +413,7 @@ export async function recordCheckOut(userId: string, checkOutTime: string): Prom
   }
 
   const local = getLocalAttendance();
-  const idx = local.findIndex(r => (r.userId === userId || r.employeeId === userId) && (r.date === todayStr || r.date === 'Today'));
+  const idx = local.findIndex(r => (r.userId === userId || r.employeeId === userId) && r.date === todayStr);
   if (idx >= 0) {
     local[idx].checkOut = checkOutTime;
     saveLocalAttendance(local);
@@ -412,7 +424,7 @@ export async function recordCheckOut(userId: string, checkOutTime: string): Prom
  * Cancel an early check-out to resume the active workday
  */
 export async function cancelCheckOut(userId: string): Promise<void> {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
 
   if (db) {
     try {
@@ -433,7 +445,7 @@ export async function cancelCheckOut(userId: string): Promise<void> {
   }
 
   const local = getLocalAttendance();
-  const idx = local.findIndex(r => (r.userId === userId || r.employeeId === userId) && (r.date === todayStr || r.date === 'Today'));
+  const idx = local.findIndex(r => (r.userId === userId || r.employeeId === userId) && r.date === todayStr);
   if (idx >= 0) {
     local[idx].checkOut = '—';
     saveLocalAttendance(local);
@@ -452,7 +464,7 @@ export async function recordAbsence(
   reason: string,
   note?: string
 ): Promise<string> {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
   const dayLabel = new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 
   const record: AttendanceRecord = {
@@ -503,7 +515,7 @@ export async function recordAbsence(
   }
 
   const local = getLocalAttendance();
-  const idx = local.findIndex(r => (r.userId === userId || r.employeeId === userId) && (r.date === todayStr || r.date === 'Today'));
+  const idx = local.findIndex(r => (r.userId === userId || r.employeeId === userId) && r.date === todayStr);
   if (idx >= 0) {
     local[idx] = {
       ...local[idx],
@@ -529,7 +541,7 @@ export async function recordAbsence(
  * Cancel a self-reported absence so the employee can check in normally
  */
 export async function cancelAbsence(userId: string): Promise<void> {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
 
   if (db) {
     try {
@@ -549,7 +561,7 @@ export async function cancelAbsence(userId: string): Promise<void> {
   }
 
   const local = getLocalAttendance();
-  const filtered = local.filter(r => !((r.userId === userId || r.employeeId === userId) && (r.date === todayStr || r.date === 'Today')));
+  const filtered = local.filter(r => !((r.userId === userId || r.employeeId === userId) && r.date === todayStr));
   saveLocalAttendance(filtered);
 }
 
@@ -557,7 +569,7 @@ export async function cancelAbsence(userId: string): Promise<void> {
  * Fetch today's verified attendance record for a user
  */
 export async function getTodayUserAttendance(userId: string): Promise<AttendanceRecord | null> {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
 
   if (db) {
     try {
@@ -576,7 +588,7 @@ export async function getTodayUserAttendance(userId: string): Promise<Attendance
   }
 
   const local = getLocalAttendance();
-  const found = local.find(r => (r.userId === userId || r.employeeId === userId) && (r.date === todayStr || r.date === 'Today'));
+  const found = local.find(r => (r.userId === userId || r.employeeId === userId) && r.date === todayStr);
   return found || null;
 }
 
@@ -585,7 +597,7 @@ export async function getTodayUserAttendance(userId: string): Promise<Attendance
  * Subscribe to today's attendance (real-time for Admin Dashboard)
  */
 export function subscribeTodayAttendance(callback: (records: AttendanceRecord[]) => void): () => void {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
 
   if (db) {
     try {
@@ -913,10 +925,10 @@ export async function deleteAttendanceRecord(recordId: string): Promise<void> {
 }
 
 /**
- * Reset today's attendance record for a specific user (Demo & Testing helper)
+ * Reset today's attendance record for a specific user (administrative helper)
  */
 export async function resetTodayAttendance(userId: string): Promise<void> {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
 
   if (db) {
     try {
@@ -941,21 +953,22 @@ export async function resetTodayAttendance(userId: string): Promise<void> {
   // Clear from local storage
   const local = getLocalAttendance();
   const filtered = local.filter(r => 
-    !((r.userId === userId || r.employeeId === userId) && (r.date === todayStr || r.date === 'Today'))
+    !((r.userId === userId || r.employeeId === userId) && r.date === todayStr)
   );
   saveLocalAttendance(filtered);
 
   // Clear session state
   try {
     localStorage.removeItem('metroattend_session_state');
+    localStorage.removeItem('metroattend_session_date');
   } catch {}
 }
 
 /**
- * Reset ALL attendance records for today (Demo Clean-Slate Helper)
+ * Reset ALL attendance records for today (administrative clean-slate helper)
  */
 export async function resetAllTodayAttendance(): Promise<void> {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
 
   if (db) {
     try {
@@ -973,11 +986,12 @@ export async function resetAllTodayAttendance(): Promise<void> {
   }
 
   const local = getLocalAttendance();
-  const filtered = local.filter(r => r.date !== todayStr && r.date !== 'Today');
+  const filtered = local.filter(r => r.date !== todayStr);
   saveLocalAttendance(filtered);
 
   try {
     localStorage.removeItem('metroattend_session_state');
+    localStorage.removeItem('metroattend_session_date');
   } catch {}
 }
 
@@ -1038,7 +1052,7 @@ export async function simulateSharedDeviceCheckIn(userId: string, primaryName: s
   }
 
   const local = getLocalAttendance();
-  const idx = local.findIndex(r => (r.userId === userId || r.employeeId === userId) && (r.date === todayStr || r.date === 'Today'));
+  const idx = local.findIndex(r => (r.userId === userId || r.employeeId === userId) && r.date === todayStr);
   if (idx >= 0) {
     local[idx].isSharedDevice = true;
     local[idx].sharedWithEmployeeName = colleagueName;

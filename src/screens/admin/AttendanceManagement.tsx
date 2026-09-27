@@ -6,8 +6,8 @@ import {
   getAllAttendanceRecords, 
   updateAttendanceStatus, 
   deleteAttendanceRecord, 
-  resetAllTodayAttendance,
-  exportRecordsToCSV 
+  exportRecordsToCSV,
+  getLocalDateString 
 } from '../../lib/firebase';
 import { getNearestLandmark } from '../../lib/geo';
 
@@ -17,7 +17,7 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
   const [deptFilter, setDeptFilter] = useState('All');
   const [onlyFlaggedDevices, setOnlyFlaggedDevices] = useState(false);
   const [onlyFieldSites, setOnlyFieldSites] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(() => getLocalDateString());
   const [editingRow, setEditingRow] = useState<AttendanceRecord | null>(null);
   const [savingStatus, setSavingStatus] = useState(false);
 
@@ -36,7 +36,7 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
   const filtered = records.filter(row => {
     const matchStatus = statusFilter === 'All' || row.status === statusFilter;
     const matchDept = deptFilter === 'All' || (row.department || 'Operations') === deptFilter;
-    const matchDate = !selectedDate || row.date === selectedDate || row.date === 'Today';
+    const matchDate = !selectedDate || row.date === selectedDate;
     const matchFlagged = !onlyFlaggedDevices || Boolean(row.isSharedDevice);
     const matchFieldSite = !onlyFieldSites || row.dutyType === 'Field Site';
     return matchStatus && matchDept && matchDate && matchFlagged && matchFieldSite;
@@ -63,15 +63,6 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
     setRecords(prev => prev.filter(r => r.id !== recordId));
   };
 
-  const handleResetToday = async () => {
-    if (!window.confirm('Reset all attendance logs for today? This provides a fresh roster for presentation/demo.')) return;
-    await resetAllTodayAttendance();
-    await loadRecords();
-    nav.setCheckInStatus('not-checked-in');
-    nav.setCheckInTime('');
-    nav.setCheckOutTime('');
-  };
-
   return (
     <AdminShell nav={nav}>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -80,17 +71,6 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
           <p className="text-muted text-sm mt-0.5">Real-time attendance logs, status overrides, and verification</p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleResetToday}
-            className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 px-3.5 py-2.5 rounded-xl font-display font-semibold text-xs transition-all shadow-xs cursor-pointer"
-            title="Wipe today's attendance logs for demo"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-              <path d="M3 3v5h5"/>
-            </svg>
-            <span>↻ Reset Today (Demo)</span>
-          </button>
           <button 
             onClick={() => exportRecordsToCSV(filtered, `attendance_${selectedDate}.csv`)}
             className="flex items-center gap-2 bg-navy text-white px-4 py-2.5 rounded-xl font-display font-semibold text-xs hover:bg-navy-dark transition-all shadow-xs cursor-pointer"

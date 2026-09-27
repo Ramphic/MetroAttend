@@ -20,8 +20,7 @@ import Reports from './screens/admin/Reports';
 import LocationSettings from './screens/admin/LocationSettings';
 import Settings from './screens/admin/Settings';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
-import DemoToolbar from './components/DemoToolbar';
-import { getTodayUserAttendance } from './lib/firebase';
+import { getTodayUserAttendance, getLocalDateString } from './lib/firebase';
 
 function AccessDenied({ nav, onPreviewAdmin }: { nav: NavProps; onPreviewAdmin: () => void }) {
   return (
@@ -74,18 +73,22 @@ function MainContent() {
     return 'landing';
   });
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const [currentDate, setCurrentDate] = useState<string>(() => getLocalDateString());
 
-  // Daily auto-reset check
+  // Daily auto-reset check on initial load
   const [checkInStatus, setCheckInStatus] = useState<CheckInStatus>(() => {
     try {
+      const today = getLocalDateString();
       const storedDate = localStorage.getItem(SESSION_DATE_KEY);
-      if (storedDate === todayStr) {
+      if (storedDate === today) {
         const raw = localStorage.getItem(SESSION_STATE_KEY);
         if (raw) {
           const parsed = JSON.parse(raw);
           return parsed.status || 'not-checked-in';
         }
+      } else {
+        localStorage.removeItem(SESSION_DATE_KEY);
+        localStorage.removeItem(SESSION_STATE_KEY);
       }
     } catch {}
     return 'not-checked-in';
@@ -93,8 +96,9 @@ function MainContent() {
 
   const [checkInTime, setCheckInTime] = useState<string>(() => {
     try {
+      const today = getLocalDateString();
       const storedDate = localStorage.getItem(SESSION_DATE_KEY);
-      if (storedDate === todayStr) {
+      if (storedDate === today) {
         const raw = localStorage.getItem(SESSION_STATE_KEY);
         if (raw) {
           const parsed = JSON.parse(raw);
@@ -107,8 +111,9 @@ function MainContent() {
 
   const [checkOutTime, setCheckOutTime] = useState<string>(() => {
     try {
+      const today = getLocalDateString();
       const storedDate = localStorage.getItem(SESSION_DATE_KEY);
-      if (storedDate === todayStr) {
+      if (storedDate === today) {
         const raw = localStorage.getItem(SESSION_STATE_KEY);
         if (raw) {
           const parsed = JSON.parse(raw);
@@ -124,39 +129,97 @@ function MainContent() {
 
   const { user, profile, isAdmin } = useAuth();
 
-  // Persist session state for today
+  // Clear any legacy demo override flags from browser storage
   useEffect(() => {
-    localStorage.setItem(SESSION_DATE_KEY, todayStr);
-    localStorage.setItem(SESSION_STATE_KEY, JSON.stringify({
-      status: checkInStatus,
-      checkInTime,
-      checkOutTime,
-    }));
-  }, [todayStr, checkInStatus, checkInTime, checkOutTime]);
+    try {
+      localStorage.removeItem('metroattend_demo_force_gps');
+      localStorage.removeItem('metroattend_demo_timemode');
+      localStorage.removeItem('metroattend_demo_user');
+    } catch {}
+  }, []);
 
-  // Synchronize with database on login/mount
+  // Automatic daily reset monitor:
+  // Detects day rollover when app is left open across midnight, or when user unlocks phone/switches tabs
+  useEffect(() => {
+    const handleDayRollover = () => {
+      const actualToday = getLocalDateString();
+      if (actualToday !== currentDate) {
+        // Date has rolled over! Reset attendance state for the new workday
+        setCurrentDate(actualToday);
+        localStorage.removeItem(SESSION_DATE_KEY);
+        localStorage.removeItem(SESSION_STATE_KEY);
+        setCheckInStatus('not-checked-in');
+        setCheckInTime('');
+        setCheckOutTime('');
+      }
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        handleDayRollover();
+      }
+    };
+
+    window.addEventListener('focus', handleDayRollover);
+    document.addEventListener('visibilitychange', handleVisibility);
+    const interval = setInterval(handleDayRollover, 30000);
+
+    return () => {
+      window.removeEventListener('focus', handleDayRollover);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      clearInterval(interval);
+    };
+  }, [currentDate]);
+
+  // Persist session state for today only
+  useEffect(() => {
+    const actualToday = getLocalDateString();
+    if (currentDate === actualToday) {
+      localStorage.setItem(SESSION_DATE_KEY, currentDate);
+      localStorage.setItem(SESSION_STATE_KEY, JSON.stringify({
+        status: checkInStatus,
+        checkInTime,
+        checkOutTime,
+      }));
+    }
+  }, [currentDate, checkInStatus, checkInTime, checkOutTime]);
+
+  // Synchronize with database on login/mount/day-change
   useEffect(() => {
     const uid = user?.uid || profile?.id || profile?.uid;
-    if (uid) {
-      getTodayUserAttendance(uid).then((record) => {
-        if (record && record.date === todayStr) {
-          if (record.status === 'Absent') {
-            setCheckInStatus('absent');
-            setCheckInTime('—');
-            setCheckOutTime('—');
-          } else if (record.checkOut && record.checkOut !== '—') {
-            setCheckInStatus('checked-out');
-            setCheckInTime(record.checkIn);
-            setCheckOutTime(record.checkOut);
-          } else if (record.checkIn && record.checkIn !== '—') {
-            setCheckInStatus('checked-in');
-            setCheckInTime(record.checkIn);
-            setCheckOutTime('');
-          }
+    if (!uid) return;
+
+    let isMounted = true;
+    getTodayUserAttendance(uid).then((record) => {
+      if (!isMounted) return;
+      const actualToday = getLocalDateString();
+
+      if (record && record.date === actualToday) {
+        if (record.status === 'Absent') {
+          setCheckInStatus('absent');
+          setCheckInTime('—');
+          setCheckOutTime('—');
+        } else if (record.checkOut && record.checkOut !== '—') {
+          setCheckInStatus('checked-out');
+          setCheckInTime(record.checkIn);
+          setCheckOutTime(record.checkOut);
+        } else if (record.checkIn && record.checkIn !== '—') {
+          setCheckInStatus('checked-in');
+          setCheckInTime(record.checkIn);
+          setCheckOutTime('');
         }
-      });
-    }
-  }, [user, profile, todayStr]);
+      } else {
+        // No record exists for today: strictly ensure clean "not-checked-in" state
+        setCheckInStatus('not-checked-in');
+        setCheckInTime('');
+        setCheckOutTime('');
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user, profile, currentDate]);
 
   const nav: NavProps = {
     navigate: setScreen,
@@ -202,54 +265,10 @@ function MainContent() {
     }
   }
 
-  const [demoModalOpen, setDemoModalOpen] = useState(false);
-
   return (
     <div style={{ minHeight: '100vh' }} className="relative">
       {renderScreen()}
       <PWAInstallPrompt />
-
-      {/* Floating View Switcher & Demo Tools */}
-      <div className="fixed bottom-20 sm:bottom-4 right-4 z-50 bg-slate-900/90 text-white backdrop-blur-md rounded-2xl p-1.5 shadow-2xl border border-white/20 flex items-center gap-1 text-xs font-display font-bold">
-        <button
-          onClick={() => {
-            setScreen('dashboard');
-          }}
-          className={`px-3 py-1.5 rounded-xl transition-all ${
-            !screen.startsWith('admin-') ? 'bg-white/25 text-white shadow-xs' : 'text-white/60 hover:text-white'
-          }`}
-        >
-          📱 Staff App
-        </button>
-        <button
-          onClick={() => {
-            setDevAdminBypass(true);
-            setAdminTab('dashboard');
-            setScreen('admin-dashboard');
-          }}
-          className={`px-3 py-1.5 rounded-xl transition-all ${
-            screen.startsWith('admin-') ? 'bg-blue-600 text-white shadow-xs' : 'text-white/60 hover:text-white'
-          }`}
-        >
-          🛠 Admin Console
-        </button>
-        <button
-          onClick={() => setDemoModalOpen(true)}
-          className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white shadow-xs transition-all flex items-center gap-1 cursor-pointer"
-          title="Demo Toolkit: Reset attendance, time simulator, GPS override"
-        >
-          <span className="animate-pulse">⚡</span>
-          <span>Demo Tools</span>
-        </button>
-      </div>
-
-      {/* Presentation & Demo Toolkit */}
-      <DemoToolbar 
-        nav={nav} 
-        currentScreen={screen} 
-        isOpen={demoModalOpen} 
-        setIsOpen={setDemoModalOpen} 
-      />
     </div>
   );
 }
