@@ -3,31 +3,36 @@ import { NavProps, StaffCategory } from '../types';
 import { useAuth } from '../context/AuthContext';
 
 const departments = [
-  'Engineering',
-  'Administration',
-  'Finance',
+  'Civil Engineering & Road Works',
+  'Field Survey & Route Alignment',
+  'Drainage & Stormwater Maintenance',
+  'Materials Testing & Asphalt Lab',
+  'Traffic Engineering & Safety',
+  'Structural & Bridge Inspection',
+  'Administration & Operations',
+  'Finance & Accounts',
   'Information Technology',
-  'Human Resources',
-  'Legal Affairs',
-  'Operations',
+  'Human Resources & Compliance',
 ];
 
 export default function ProfileSetup({ nav }: { nav: NavProps }) {
   const { profile, user, updateProfileData } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [staffId, setStaffId] = useState(profile?.staffId || '');
-  const [department, setDepartment] = useState(profile?.department || 'Engineering');
+  const [name, setName] = useState(profile?.name || user?.displayName || '');
+  const [staffId, setStaffId] = useState(profile?.staffId || `MWI-${Math.floor(1000 + Math.random() * 9000)}`);
+  const [department, setDepartment] = useState(profile?.department || 'Civil Engineering & Road Works');
   const [position, setPosition] = useState(profile?.position || '');
   const [supervisor, setSupervisor] = useState(profile?.supervisor || '');
   const [phone, setPhone] = useState(profile?.phone || '');
   const [category, setCategory] = useState<StaffCategory>(profile?.category || 'Permanent Staff');
   const [photoURL, setPhotoURL] = useState<string | undefined>(profile?.photoURL || user?.photoURL || undefined);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Compute completion progress
-  const fields = [staffId, department, position, supervisor, phone];
-  const filledCount = fields.filter(f => f.trim().length > 0).length;
+  // Compute completion progress across all profile elements
+  const fields = [name, phone, staffId, department, position, supervisor, photoURL || ''];
+  const filledCount = fields.filter(f => Boolean(f && f.toString().trim().length > 0)).length;
   const pct = Math.round((filledCount / fields.length) * 100);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -67,27 +72,43 @@ export default function ProfileSetup({ nav }: { nav: NavProps }) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!name.trim()) {
+      setError('Please provide your official full name.');
+      return;
+    }
+    if (!phone.trim()) {
+      setError('Please provide an active contact phone number.');
+      return;
+    }
+    if (!position.trim()) {
+      setError('Please specify your current job title or role.');
+      return;
+    }
+
     setSubmitting(true);
+    setError(null);
     try {
       await updateProfileData({
-        staffId: staffId || `MWI-${Math.floor(1000 + Math.random() * 9000)}`,
+        name: name.trim(),
+        staffId: staffId.trim() || `MWI-${Math.floor(1000 + Math.random() * 9000)}`,
         department,
-        position: position || 'Staff Member',
-        supervisor: supervisor || 'Department Head',
-        phone: phone || '+233 24 000 0000',
+        position: position.trim() || 'Staff Member',
+        supervisor: supervisor.trim() || 'Operations Lead',
+        phone: phone.trim(),
         category,
         photoURL,
         profileComplete: true,
       });
       nav.navigate('dashboard');
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setError(err?.message || 'Failed to save profile. Please try again.');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const displayName = profile?.name || user?.displayName || 'Staff Member';
+  const displayName = name.trim() || profile?.name || user?.displayName || 'Staff Member';
   const displayEmail = profile?.email || user?.email || '';
 
   return (
@@ -97,16 +118,22 @@ export default function ProfileSetup({ nav }: { nav: NavProps }) {
         <div className="bg-navy px-6 py-6 sm:px-8 text-white">
           <button 
             onClick={() => nav.navigate('landing')} 
-            className="text-white/60 hover:text-white text-xs font-display font-semibold flex items-center gap-1.5 mb-2 transition-colors"
+            className="text-white/60 hover:text-white text-xs font-display font-semibold flex items-center gap-1.5 mb-2 transition-colors cursor-pointer"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
             Cancel
           </button>
           <h1 className="text-xl sm:text-2xl font-display font-800">Staff Profile Setup</h1>
-          <p className="text-white/60 text-xs mt-0.5">Upload your employee photo and complete your workplace records</p>
+          <p className="text-white/60 text-xs mt-0.5">Complete your workplace records, department, and photo</p>
         </div>
 
         <div className="p-6 sm:p-8 space-y-6">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-xs p-3.5 rounded-xl font-medium">
+              {error}
+            </div>
+          )}
+
           {/* Avatar Upload Box */}
           <div className="bg-surface rounded-2xl p-5 border border-border flex flex-col sm:flex-row items-center gap-4 sm:gap-6 text-center sm:text-left">
             <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
@@ -143,7 +170,7 @@ export default function ProfileSetup({ nav }: { nav: NavProps }) {
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-3 py-1.5 bg-navy text-white text-xs font-display font-bold rounded-xl hover:bg-navy-dark transition-colors shadow-xs flex items-center gap-1.5"
+                  className="px-3 py-1.5 bg-navy text-white text-xs font-display font-bold rounded-xl hover:bg-navy-dark transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                     <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
@@ -156,7 +183,7 @@ export default function ProfileSetup({ nav }: { nav: NavProps }) {
                   <button
                     type="button"
                     onClick={() => setPhotoURL(undefined)}
-                    className="px-2.5 py-1.5 bg-slate-100 text-slate-600 text-xs font-display font-semibold rounded-xl hover:bg-slate-200"
+                    className="px-2.5 py-1.5 bg-slate-100 text-slate-600 text-xs font-display font-semibold rounded-xl hover:bg-slate-200 cursor-pointer"
                   >
                     Reset
                   </button>
@@ -180,10 +207,40 @@ export default function ProfileSetup({ nav }: { nav: NavProps }) {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Full Name */}
+            <div>
+              <label className="block text-xs font-display font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+                Full Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Samuel Kwesi Boateng"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                required
+                className="w-full px-4 py-3 rounded-xl border border-border bg-surface text-slate-800 text-sm font-display focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy"
+              />
+            </div>
+
+            {/* Phone Number */}
+            <div>
+              <label className="block text-xs font-display font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+                Active Phone Number <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="tel"
+                placeholder="e.g. +233 24 123 4567"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                required
+                className="w-full px-4 py-3 rounded-xl border border-border bg-surface text-slate-800 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy"
+              />
+            </div>
+
             {/* Staff Category */}
             <div>
               <label className="block text-xs font-display font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
-                Staff Category
+                Staff Category <span className="text-red-500">*</span>
               </label>
               <select
                 value={category}
@@ -195,6 +252,37 @@ export default function ProfileSetup({ nav }: { nav: NavProps }) {
                 <option value="Intern">Intern</option>
                 <option value="Contract Staff">Contract Staff</option>
               </select>
+            </div>
+
+            {/* Field / Department */}
+            <div>
+              <label className="block text-xs font-display font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+                Field / Department <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={department}
+                onChange={e => setDepartment(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-border bg-surface text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy"
+              >
+                {departments.map(dept => (
+                  <option key={dept} value={dept}>{dept}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Position */}
+            <div>
+              <label className="block text-xs font-display font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+                Job Position / Role <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Senior Civil Engineer"
+                value={position}
+                onChange={e => setPosition(e.target.value)}
+                required
+                className="w-full px-4 py-3 rounded-xl border border-border bg-surface text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy"
+              />
             </div>
 
             {/* Staff ID */}
@@ -212,37 +300,6 @@ export default function ProfileSetup({ nav }: { nav: NavProps }) {
               />
             </div>
 
-            {/* Department */}
-            <div>
-              <label className="block text-xs font-display font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
-                Department
-              </label>
-              <select
-                value={department}
-                onChange={e => setDepartment(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl border border-border bg-surface text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy"
-              >
-                {departments.map(dept => (
-                  <option key={dept} value={dept}>{dept}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Position */}
-            <div>
-              <label className="block text-xs font-display font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
-                Position / Role
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. Senior Civil Engineer"
-                value={position}
-                onChange={e => setPosition(e.target.value)}
-                required
-                className="w-full px-4 py-3 rounded-xl border border-border bg-surface text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy"
-              />
-            </div>
-
             {/* Supervisor */}
             <div>
               <label className="block text-xs font-display font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
@@ -250,35 +307,19 @@ export default function ProfileSetup({ nav }: { nav: NavProps }) {
               </label>
               <input
                 type="text"
-                placeholder="e.g. Daniel Owusu"
+                placeholder="e.g. Ing. Daniel Owusu"
                 value={supervisor}
                 onChange={e => setSupervisor(e.target.value)}
-                required
                 className="w-full px-4 py-3 rounded-xl border border-border bg-surface text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy"
-              />
-            </div>
-
-            {/* Phone Number */}
-            <div>
-              <label className="block text-xs font-display font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
-                Phone Number
-              </label>
-              <input
-                type="tel"
-                placeholder="+233 24 123 4567"
-                value={phone}
-                onChange={e => setPhone(e.target.value)}
-                required
-                className="w-full px-4 py-3 rounded-xl border border-border bg-surface text-slate-800 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy"
               />
             </div>
 
             <button
               type="submit"
               disabled={submitting}
-              className="w-full bg-navy text-white py-4 rounded-xl font-display font-bold text-base mt-6 transition-all hover:bg-navy-dark active:scale-[0.99] shadow-md flex items-center justify-center gap-2"
+              className="w-full bg-navy text-white py-4 rounded-xl font-display font-bold text-base mt-6 transition-all hover:bg-navy-dark active:scale-[0.99] shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
             >
-              {submitting ? 'Saving Profile & Photo…' : 'Complete Setup & Go to Dashboard →'}
+              {submitting ? 'Saving Profile & Records…' : 'Complete Setup & Go to Dashboard →'}
             </button>
           </form>
         </div>

@@ -24,7 +24,13 @@ export default function Register({ nav }: { nav: NavProps }) {
     setLoading(true);
     setError(null);
     try {
-      await signInWithGoogle('employee');
+      const res = await signInWithGoogle('employee');
+      if (res.isAdmin) {
+        nav.setAdminTab('dashboard');
+        nav.navigate('admin-dashboard');
+      } else {
+        nav.navigate('profile-setup');
+      }
     } catch (err: any) {
       setError(err?.message || 'Failed to authenticate with Google');
     } finally {
@@ -38,6 +44,10 @@ export default function Register({ nav }: { nav: NavProps }) {
       setError('Please fill in your full name, email, and password.');
       return;
     }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters long.');
+      return;
+    }
     if (!selectedCategory) {
       setError('Please select your staff classification category below.');
       return;
@@ -45,8 +55,13 @@ export default function Register({ nav }: { nav: NavProps }) {
     setLoading(true);
     setError(null);
     try {
-      await registerWithEmail(email.trim(), password, name.trim(), selectedCategory);
-      nav.navigate('profile-setup');
+      const res = await registerWithEmail(email.trim(), password, name.trim(), selectedCategory);
+      if (res.isAdmin) {
+        nav.setAdminTab('dashboard');
+        nav.navigate('admin-dashboard');
+      } else {
+        nav.navigate('profile-setup');
+      }
     } catch (err: any) {
       setError(err?.message || 'Failed to create account.');
     } finally {

@@ -94,6 +94,103 @@ export async function resetUserPassword(email: string): Promise<void> {
   await sendPasswordResetEmail(auth, email.trim());
 }
 
+// ----------------------------------------------------
+// CREDENTIAL STORE & FALLBACK REGISTRY
+// ----------------------------------------------------
+
+export interface StoredCredential {
+  email: string;
+  password: string;
+  uid: string;
+  name: string;
+  createdAt: string;
+}
+
+const LOCAL_CREDENTIALS_KEY = 'metroattend_credentials';
+
+export function getLocalCredentials(): StoredCredential[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_CREDENTIALS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveLocalCredentials(list: StoredCredential[]) {
+  try {
+    localStorage.setItem(LOCAL_CREDENTIALS_KEY, JSON.stringify(list));
+  } catch {}
+}
+
+export async function saveStoredCredential(email: string, password: string, uid: string, name: string): Promise<void> {
+  const cleanEmail = email.trim().toLowerCase();
+  const record: StoredCredential = {
+    email: cleanEmail,
+    password,
+    uid,
+    name,
+    createdAt: new Date().toISOString(),
+  };
+
+  if (db) {
+    try {
+      const docId = `cred_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
+      await setDoc(doc(db, 'credentials', docId), record, { merge: true });
+    } catch (e) {
+      console.warn('Error saving credential to Firestore:', e);
+    }
+  }
+
+  const list = getLocalCredentials();
+  const idx = list.findIndex(c => c.email === cleanEmail);
+  if (idx >= 0) {
+    list[idx] = record;
+  } else {
+    list.push(record);
+  }
+  saveLocalCredentials(list);
+}
+
+export async function getStoredCredential(email: string): Promise<StoredCredential | null> {
+  const cleanEmail = email.trim().toLowerCase();
+
+  if (db) {
+    try {
+      const docId = `cred_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
+      const snap = await getDoc(doc(db, 'credentials', docId));
+      if (snap.exists()) {
+        return snap.data() as StoredCredential;
+      }
+    } catch (e) {
+      console.warn('Error fetching credential from Firestore:', e);
+    }
+  }
+
+  const list = getLocalCredentials();
+  const found = list.find(c => c.email === cleanEmail);
+  return found || null;
+}
+
+export async function findUserByEmail(email: string): Promise<Employee | null> {
+  const cleanEmail = email.trim().toLowerCase();
+
+  if (db) {
+    try {
+      const q = query(collection(db, 'users'), where('email', '==', cleanEmail));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        return { ...snap.docs[0].data(), id: snap.docs[0].id } as Employee;
+      }
+    } catch (e) {
+      console.warn('Error searching user by email in Firestore:', e);
+    }
+  }
+
+  const local = getLocalUsers();
+  return local.find(u => u.email?.trim().toLowerCase() === cleanEmail) || null;
+}
+
 // Single designated Admin Email from env or fallback
 export const DESIGNATED_ADMIN_EMAIL = (
   import.meta.env.VITE_ADMIN_EMAIL || 'otoojoojotandoh100@gmail.com'

@@ -7,7 +7,8 @@ import {
   getAllEmployees, 
   getAllAttendanceRecords, 
   sendBroadcastAnnouncement, 
-  exportRecordsToCSV 
+  exportRecordsToCSV,
+  getLocalDateString 
 } from '../../lib/firebase';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -80,33 +81,60 @@ export default function AdminDashboard({ nav }: { nav: NavProps }) {
     };
   });
 
-  // Dynamic Weekly Velocity Calculation
+  // Dynamic Weekly Velocity Calculation (Monday - Friday of current week)
   const weeklyTrendData = React.useMemo(() => {
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-    const currentDayIdx = new Date().getDay();
+    const now = new Date();
+    const currentDayOfWeek = now.getDay(); // 0 is Sun, 1 is Mon, 2 is Tue, 3 is Wed, 4 is Thu, 5 is Fri, 6 is Sat
+    const mondayOffset = currentDayOfWeek === 0 ? -6 : 1 - currentDayOfWeek;
+    const mondayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset);
 
-    return days.map((day, idx) => {
-      const dayNum = idx + 1;
-      const dayRecords = [...historyRecords, ...records].filter(r => {
-        if (!r.date) return false;
-        const d = new Date(r.date);
-        return d.getDay() === dayNum;
-      });
+    const weekDays = [0, 1, 2, 3, 4].map(offset => {
+      const d = new Date(mondayDate.getFullYear(), mondayDate.getMonth(), mondayDate.getDate() + offset);
+      const dateStr = getLocalDateString(d);
+      const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+      return {
+        label: `${dayNames[offset]} ${d.getDate()}`,
+        dateStr,
+        isToday: dateStr === getLocalDateString(now),
+      };
+    });
 
+    // Deduplicate records between historyRecords and live records by (user + date)
+    const recordMap = new Map<string, AttendanceRecord>();
+    for (const r of historyRecords) {
+      if (!r.date) continue;
+      const key = `${r.userId || r.employeeId || r.id || 'usr'}_${r.date}`;
+      recordMap.set(key, r);
+    }
+    for (const r of records) {
+      if (!r.date) continue;
+      const key = `${r.userId || r.employeeId || r.id || 'usr'}_${r.date}`;
+      recordMap.set(key, r);
+    }
+
+    const allDeduplicated = Array.from(recordMap.values());
+
+    return weekDays.map(day => {
+      const dayRecords = allDeduplicated.filter(r => r.date === day.dateStr);
       const p = dayRecords.filter(r => r.status === 'Present').length;
       const l = dayRecords.filter(r => r.status === 'Late').length;
       const a = dayRecords.filter(r => r.status === 'Absent').length;
 
-      if (dayNum === currentDayIdx) {
+      if (day.isToday) {
         return {
-          day,
+          day: day.label,
           present: Math.max(p, presentCount),
           late: Math.max(l, lateCount),
           absent: Math.max(a, absentCount),
         };
       }
 
-      return { day, present: p, late: l, absent: a };
+      return {
+        day: day.label,
+        present: p,
+        late: l,
+        absent: a,
+      };
     });
   }, [historyRecords, records, presentCount, lateCount, absentCount]);
 
@@ -193,11 +221,11 @@ export default function AdminDashboard({ nav }: { nav: NavProps }) {
       {/* Charts & Category Row */}
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-4 mb-6">
         {/* Weekly trend */}
-        <div className="xl:col-span-3 bg-white rounded-2xl p-5 border border-border shadow-sm">
-          <div className="flex items-center justify-between mb-5">
+        <div className="xl:col-span-3 bg-white rounded-2xl p-5 border border-border shadow-sm min-h-[260px] flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-sm font-display font-700 text-slate-800">Weekly Attendance Velocity</h2>
-              <p className="text-muted text-xs font-mono mt-0.5">Aggregate status trend</p>
+              <p className="text-muted text-xs font-mono mt-0.5">Monday – Friday work week attendance</p>
             </div>
             <div className="flex gap-3 text-[10px] font-mono">
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-navy inline-block"/>Present</span>
@@ -205,20 +233,22 @@ export default function AdminDashboard({ nav }: { nav: NavProps }) {
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-danger inline-block"/>Absent</span>
             </div>
           </div>
-          <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={weeklyTrendData} barSize={20} barGap={4}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false}/>
-              <XAxis dataKey="day" tick={{ fontSize: 11, fontFamily: 'JetBrains Mono', fill: '#94A3B8' }} axisLine={false} tickLine={false}/>
-              <YAxis tick={{ fontSize: 10, fontFamily: 'JetBrains Mono', fill: '#94A3B8' }} axisLine={false} tickLine={false}/>
-              <Tooltip
-                contentStyle={{ borderRadius: 12, border: '1px solid #E2E8F0', boxShadow: '0 4px 12px rgba(0,0,0,0.06)', fontFamily: 'Inter', fontSize: 12 }}
-                cursor={{ fill: '#F8FAFC' }}
-              />
-              <Bar dataKey="present" fill="#1B3A6B" radius={[4,4,0,0]} name="Present"/>
-              <Bar dataKey="late" fill="#B45309" radius={[4,4,0,0]} name="Late"/>
-              <Bar dataKey="absent" fill="#DC2626" radius={[4,4,0,0]} name="Absent"/>
-            </BarChart>
-          </ResponsiveContainer>
+          <div style={{ width: '100%', height: 180, minHeight: 180 }}>
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={weeklyTrendData} barSize={20} barGap={4}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false}/>
+                <XAxis dataKey="day" tick={{ fontSize: 11, fontFamily: 'JetBrains Mono', fill: '#94A3B8' }} axisLine={false} tickLine={false}/>
+                <YAxis allowDecimals={false} domain={[0, 'auto']} tick={{ fontSize: 10, fontFamily: 'JetBrains Mono', fill: '#94A3B8' }} axisLine={false} tickLine={false}/>
+                <Tooltip
+                  contentStyle={{ borderRadius: 12, border: '1px solid #E2E8F0', boxShadow: '0 4px 12px rgba(0,0,0,0.06)', fontFamily: 'Inter', fontSize: 12 }}
+                  cursor={{ fill: '#F8FAFC' }}
+                />
+                <Bar dataKey="present" fill="#1B3A6B" radius={[4,4,0,0]} name="Present"/>
+                <Bar dataKey="late" fill="#B45309" radius={[4,4,0,0]} name="Late"/>
+                <Bar dataKey="absent" fill="#DC2626" radius={[4,4,0,0]} name="Absent"/>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
         {/* Real Dynamic Category breakdown */}
