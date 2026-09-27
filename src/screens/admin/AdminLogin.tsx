@@ -1,13 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavProps } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { DESIGNATED_ADMIN_EMAIL } from '../../lib/firebase';
 import Logo from '../../components/Logo';
 
 export default function AdminLogin({ nav }: { nav: NavProps }) {
-  const { signInWithGoogle, isConfigured } = useAuth();
+  const { signInWithGoogle, isConfigured, isAdmin } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isAdmin) {
+      nav.setAdminTab('dashboard');
+      nav.navigate('admin-dashboard');
+    }
+  }, [isAdmin]);
 
   const handleAdminGoogleLogin = async () => {
     setLoading(true);

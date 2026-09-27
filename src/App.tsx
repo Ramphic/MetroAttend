@@ -20,9 +20,9 @@ import Reports from './screens/admin/Reports';
 import LocationSettings from './screens/admin/LocationSettings';
 import Settings from './screens/admin/Settings';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
-import { getTodayUserAttendance, getLocalDateString } from './lib/firebase';
+import { getTodayUserAttendance, getLocalDateString, DESIGNATED_ADMIN_EMAIL } from './lib/firebase';
 
-function AccessDenied({ nav, onPreviewAdmin }: { nav: NavProps; onPreviewAdmin: () => void }) {
+function AccessDenied({ nav }: { nav: NavProps }) {
   return (
     <div className="min-h-screen bg-navy-dark flex items-center justify-center p-6">
       <div className="bg-white rounded-3xl p-8 max-w-md w-full text-center shadow-2xl">
@@ -37,20 +37,20 @@ function AccessDenied({ nav, onPreviewAdmin }: { nav: NavProps; onPreviewAdmin: 
         </div>
         <h1 className="text-xl font-display font-800 text-slate-900 mb-2">Access Denied</h1>
         <p className="text-slate-600 text-xs leading-relaxed mb-6">
-          This section is restricted to the designated MetroWorks administrator. Your active account does not have authorization to view or edit organizational records.
+          This section is restricted to the designated MetroWorks administrator ({DESIGNATED_ADMIN_EMAIL}). Your active account does not have authorization to view or edit organizational records.
         </p>
         <div className="space-y-2.5">
           <button
-            onClick={onPreviewAdmin}
-            className="w-full bg-navy text-white py-3.5 rounded-xl font-display font-bold text-sm hover:bg-navy-dark transition-all shadow-md flex items-center justify-center gap-2"
+            onClick={() => nav.navigate('admin-login')}
+            className="w-full bg-navy text-white py-3.5 rounded-xl font-display font-bold text-sm hover:bg-navy-dark transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
           >
-            <span>👁</span> Open Admin Dashboard (Live Preview)
+            <span>🔐</span> Go to Administrator Login
           </button>
           <button
-            onClick={() => nav.navigate('dashboard')}
-            className="w-full bg-surface border border-border text-slate-700 py-3 rounded-xl font-display font-semibold text-xs hover:bg-slate-100 transition-all"
+            onClick={() => nav.navigate('landing')}
+            className="w-full bg-surface border border-border text-slate-700 py-3 rounded-xl font-display font-semibold text-xs hover:bg-slate-100 transition-all cursor-pointer"
           >
-            Return to Employee Dashboard
+            Return to Employee Sign In
           </button>
         </div>
       </div>
@@ -61,14 +61,32 @@ function AccessDenied({ nav, onPreviewAdmin }: { nav: NavProps; onPreviewAdmin: 
 const SESSION_DATE_KEY = 'metroattend_session_date';
 const SESSION_STATE_KEY = 'metroattend_session_state';
 
-function MainContent() {
-  const [devAdminBypass, setDevAdminBypass] = useState(() => {
-    return window.location.search.includes('admin') || window.location.hash.includes('admin');
-  });
+function checkIsAdminRoute(): boolean {
+  try {
+    const path = window.location.pathname.toLowerCase();
+    const hash = window.location.hash.toLowerCase();
+    const search = window.location.search.toLowerCase();
+    return (
+      path.includes('admin') ||
+      hash.includes('admin') ||
+      search.includes('admin')
+    );
+  } catch {
+    return false;
+  }
+}
 
+function MainContent() {
   const [screen, setScreen] = useState<Screen>(() => {
-    if (window.location.search.includes('admin') || window.location.hash.includes('admin')) {
-      return 'admin-dashboard';
+    const path = window.location.pathname.toLowerCase();
+    const hash = window.location.hash.toLowerCase();
+    const search = window.location.search.toLowerCase();
+
+    if (path.includes('admin-login') || hash.includes('admin-login')) {
+      return 'admin-login';
+    }
+    if (path.includes('admin') || hash.includes('admin') || search.includes('admin')) {
+      return 'admin-login';
     }
     return 'landing';
   });
@@ -221,8 +239,53 @@ function MainContent() {
     };
   }, [user, profile, currentDate]);
 
+  const navigateScreen = (newScreen: Screen) => {
+    setScreen(newScreen);
+    try {
+      if (newScreen === 'admin-login') {
+        window.history.replaceState(null, '', '/admin-login');
+      } else if (newScreen.startsWith('admin-')) {
+        window.history.replaceState(null, '', '/admin');
+      } else if (newScreen === 'landing') {
+        window.history.replaceState(null, '', '/');
+      }
+    } catch {}
+  };
+
+  // Sync route on popstate and hashchange
+  useEffect(() => {
+    const handleUrlChange = () => {
+      const path = window.location.pathname.toLowerCase();
+      const hash = window.location.hash.toLowerCase();
+      const search = window.location.search.toLowerCase();
+
+      if (path.includes('admin-login') || hash.includes('admin-login')) {
+        setScreen('admin-login');
+      } else if (path.includes('admin') || hash.includes('admin') || search.includes('admin')) {
+        setScreen(isAdmin ? 'admin-dashboard' : 'admin-login');
+      }
+    };
+
+    window.addEventListener('popstate', handleUrlChange);
+    window.addEventListener('hashchange', handleUrlChange);
+    return () => {
+      window.removeEventListener('popstate', handleUrlChange);
+      window.removeEventListener('hashchange', handleUrlChange);
+    };
+  }, [isAdmin]);
+
+  // Transition to admin dashboard when verified admin arrives on admin route
+  useEffect(() => {
+    if (isAdmin && (screen === 'admin-login' || checkIsAdminRoute())) {
+      setScreen('admin-dashboard');
+      try {
+        window.history.replaceState(null, '', '/admin');
+      } catch {}
+    }
+  }, [isAdmin]);
+
   const nav: NavProps = {
-    navigate: setScreen,
+    navigate: navigateScreen,
     checkInStatus,
     setCheckInStatus,
     checkInTime,
@@ -233,13 +296,13 @@ function MainContent() {
     setSelectedEmployeeId,
     adminTab,
     setAdminTab,
-    onAdminBypass: () => setDevAdminBypass(true),
+    onAdminBypass: () => {},
   };
 
   // Protected Admin Route Check
   const isAdminScreen = screen.startsWith('admin-') && screen !== 'admin-login';
-  if (isAdminScreen && !isAdmin && !devAdminBypass) {
-    return <AccessDenied nav={nav} onPreviewAdmin={() => setDevAdminBypass(true)} />;
+  if (isAdminScreen && !isAdmin) {
+    return <AccessDenied nav={nav} />;
   }
 
   function renderScreen() {
