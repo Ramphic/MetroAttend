@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { NavProps, AdminTab } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { DESIGNATED_ADMIN_EMAIL } from '../lib/firebase';
 import Logo from './Logo';
 
 interface Props {
@@ -92,7 +93,7 @@ export default function AdminShell({ children, nav }: Props) {
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
 
   const adminName = profile?.name || user?.displayName || 'System Admin';
-  const adminEmail = profile?.email || user?.email || 'admin@metroworks.gov.gh';
+  const adminEmail = profile?.email || user?.email || DESIGNATED_ADMIN_EMAIL;
   const avatarText = adminName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
 
   const handleLogout = async () => {

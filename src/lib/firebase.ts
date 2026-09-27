@@ -96,7 +96,7 @@ export async function resetUserPassword(email: string): Promise<void> {
 
 // Single designated Admin Email from env or fallback
 export const DESIGNATED_ADMIN_EMAIL = (
-  import.meta.env.VITE_ADMIN_EMAIL || 'admin@metroworks.gov.gh'
+  import.meta.env.VITE_ADMIN_EMAIL || 'otoojoojotandoh100@gmail.com'
 ).trim().toLowerCase();
 
 /**

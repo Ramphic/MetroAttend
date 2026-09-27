@@ -7,7 +7,8 @@ import {
   DEFAULT_WORKPLACE,
   getNotifications,
   sendBroadcastAnnouncement,
-  deleteNotification
+  deleteNotification,
+  DESIGNATED_ADMIN_EMAIL
 } from '../../lib/firebase';
 
 const sections = [
@@ -58,7 +59,7 @@ export default function Settings({ nav }: { nav: NavProps }) {
 
   // Account Settings
   const [adminName, setAdminName] = useState('System Administrator');
-  const [adminEmail, setAdminEmail] = useState('admin@metroworks.gov.gh');
+  const [adminEmail, setAdminEmail] = useState(DESIGNATED_ADMIN_EMAIL);
   const [oldPass, setOldPass] = useState('');
   const [newPass, setNewPass] = useState('');
   const [passSuccess, setPassSuccess] = useState(false);
