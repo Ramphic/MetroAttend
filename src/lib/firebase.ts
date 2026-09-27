@@ -231,14 +231,13 @@ export function calculateDistanceMeters(
 export const calculateDistance = calculateDistanceMeters;
 
 export const DEFAULT_ROAD_PROJECTS: import('../types').RoadProjectSite[] = [
-  { id: 'proj_1', name: 'Accra-Tema Motorway Expansion Corridor', corridor: 'Motorway Corridor', locality: 'Accra - Tema', status: 'Active' },
-  { id: 'proj_2', name: 'George Walker Bush Highway (N1) Drainage Works', corridor: 'N1 Highway', locality: 'Lapaz - Achimota', status: 'Active' },
-  { id: 'proj_3', name: 'Spintex Road Junction Improvement Project', corridor: 'Spintex Arterial', locality: 'Batsonaa - Spintex', status: 'Active' },
-  { id: 'proj_4', name: 'Pokuase - Ofankor Dualization Arterial', corridor: 'Pokuase Corridor', locality: 'Pokuase - Amasaman', status: 'Active' },
-  { id: 'proj_5', name: 'Asphaltic Overlay Project - Batch 4', corridor: 'Urban Arterials', locality: 'Greater Accra Corridors', status: 'Active' },
-  { id: 'proj_6', name: 'Culvert & Stormwater Drainage Inspection', corridor: 'Municipal Drainage', locality: 'Accra West Corridors', status: 'Active' },
-  { id: 'proj_7', name: 'Topographic Survey & Route Alignment', corridor: 'Survey Corridors', locality: 'All Road Sectors', status: 'Active' },
-  { id: 'proj_8', name: 'Materials Lab & Asphalt Batching Plant', corridor: 'Quality Control Facility', locality: 'Industrial Area', status: 'Active' },
+  { id: 'proj_1', name: 'Kasoa Interchange & Access Slipway Corridor', corridor: 'Accra-Winneba Road', locality: 'Kasoa', latitude: 5.535000, longitude: -0.420000, radius: 800, status: 'Active' },
+  { id: 'proj_2', name: 'Dansoman Coastal Road & Stormwater Drainage', corridor: 'Beach Road / SSNIT Hospital Corridor', locality: 'Dansoman', latitude: 5.552000, longitude: -0.258000, radius: 600, status: 'Active' },
+  { id: 'proj_3', name: 'Amasaman Highway Dualization & Bridge Works', corridor: 'Accra-Nsawam Trunk Road', locality: 'Amasaman', latitude: 5.725000, longitude: -0.320000, radius: 800, status: 'Active' },
+  { id: 'proj_4', name: 'Pokuase - Ofankor Dualization Arterial', corridor: 'Pokuase Interchange Sector', locality: 'Pokuase', latitude: 5.706700, longitude: -0.298200, radius: 600, status: 'Active' },
+  { id: 'proj_5', name: 'Spintex Road Junction Improvement Project', corridor: 'Spintex Arterial Corridor', locality: 'Spintex', latitude: 5.632000, longitude: -0.108000, radius: 600, status: 'Active' },
+  { id: 'proj_6', name: 'Accra-Tema Motorway Expansion Corridor', corridor: 'Motorway Corridor', locality: 'Accra - Tema', latitude: 5.658000, longitude: -0.052000, radius: 1000, status: 'Active' },
+  { id: 'proj_7', name: 'Materials Testing Lab & Asphalt Plant Facility', corridor: 'Quality Control Sector', locality: 'Industrial Area', latitude: 5.578000, longitude: -0.224000, radius: 450, status: 'Active' },
 ];
 
 // Default Workplace location: Department of Urban Roads HQ (Ministries, Accra)
@@ -1027,6 +1026,32 @@ export async function updateAttendanceStatus(
   const idx = local.findIndex(r => r.id === recordId);
   if (idx >= 0) {
     local[idx].status = status;
+    saveLocalAttendance(local);
+  }
+}
+
+/**
+ * Approve a flagged out-of-range or site attendance record after admin cross-check
+ */
+export async function approveFlaggedAttendanceRecord(recordId: string): Promise<void> {
+  if (db) {
+    try {
+      await updateDoc(doc(db, 'attendance', recordId), {
+        locationVerified: true,
+        isFlagged: false,
+        verifiedByAdmin: true,
+      });
+    } catch (e) {
+      console.warn('Error approving flagged attendance in Firestore:', e);
+    }
+  }
+
+  const local = getLocalAttendance();
+  const idx = local.findIndex(r => r.id === recordId);
+  if (idx >= 0) {
+    local[idx].locationVerified = true;
+    local[idx].isFlagged = false;
+    local[idx].verifiedByAdmin = true;
     saveLocalAttendance(local);
   }
 }

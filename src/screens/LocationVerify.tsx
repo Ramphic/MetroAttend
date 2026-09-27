@@ -1,86 +1,64 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { NavProps, WorkplaceSettings } from '../types';
+import { NavProps, WorkplaceSettings, RoadProjectSite } from '../types';
 import MobileShell from '../components/MobileShell';
 import { useAuth } from '../context/AuthContext';
 import { 
   calculateDistanceMeters, 
   getWorkplaceSettings, 
-  saveWorkplaceSettings,
   recordCheckIn, 
   addNotification, 
   getLocalDateString,
   DEFAULT_WORKPLACE 
 } from '../lib/firebase';
-import { reverseGeocode, getNearestLandmark, getClosestTownName, POPULAR_GHANA_TOWNS } from '../lib/geo';
+import { reverseGeocode, getNearestLandmark, getClosestTownName } from '../lib/geo';
 
-type Stage = 'checking' | 'verified' | 'failed';
 type DutyMode = 'Office HQ' | 'Field Site';
 type GpsStatus = 'idle' | 'acquiring' | 'locked' | 'denied' | 'unavailable';
 
 export default function LocationVerify({ nav }: { nav: NavProps }) {
   const { profile, user } = useAuth();
   const [dutyMode, setDutyMode] = useState<DutyMode>('Office HQ');
-  const [stage, setStage] = useState<Stage>('checking');
   const [workplace, setWorkplace] = useState<WorkplaceSettings>(DEFAULT_WORKPLACE);
   
-  // Real live device GPS state - NO hardcoded fallback coordinates!
+  // Real live device GPS state
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number; accuracy?: number } | null>(null);
   const [gpsStatus, setGpsStatus] = useState<GpsStatus>('acquiring');
   const [detectedAddress, setDetectedAddress] = useState<string>('');
-  const [distance, setDistance] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [calibrating, setCalibrating] = useState(false);
-  const [calibratedNotice, setCalibratedNotice] = useState<string | null>(null);
 
   // Field Site Specific State
-  const [selectedTown, setSelectedTown] = useState<string>('Dansoman');
+  const [selectedSiteId, setSelectedSiteId] = useState<string>('');
+  const [customSiteName, setCustomSiteName] = useState<string>('');
   const [customTown, setCustomTown] = useState<string>('');
-  const [selectedCorridor, setSelectedCorridor] = useState<string>('');
-  const [customCorridor, setCustomCorridor] = useState<string>('');
   const [siteNotes, setSiteNotes] = useState<string>('');
-  const [fieldGpsAcquiring, setFieldGpsAcquiring] = useState<boolean>(false);
 
-  // Dynamically load active road projects from workplace settings
-  const activeCorridors = useMemo(() => {
-    const list = (workplace.roadProjects || [])
-      .filter(p => p.status === 'Active')
-      .map(p => p.name);
-    if (list.length > 0) {
-      return [...list, 'Other Active Road Corridor (Custom)'];
-    }
-    return [
-      'Accra-Tema Motorway Expansion Corridor',
-      'George Walker Bush Highway (N1) Drainage Works',
-      'Spintex Road Junction Improvement Project',
-      'Pokuase - Ofankor Dualization Arterial',
-      'Asphaltic Overlay Project - Batch 4',
-      'Culvert & Stormwater Drainage Inspection',
-      'Topographic Survey & Route Alignment',
-      'Materials Lab & Asphalt Batching Plant',
-      'Other Active Road Corridor (Custom)',
-    ];
+  // Active Road Projects configured by Admin
+  const activeSites = useMemo(() => {
+    return (workplace.roadProjects || []).filter(p => p.status === 'Active');
   }, [workplace.roadProjects]);
 
   useEffect(() => {
-    if (!selectedCorridor && activeCorridors.length > 0) {
-      setSelectedCorridor(activeCorridors[0]);
+    if (!selectedSiteId && activeSites.length > 0) {
+      setSelectedSiteId(activeSites[0].id);
     }
-  }, [activeCorridors, selectedCorridor]);
+  }, [activeSites, selectedSiteId]);
+
+  // Selected site object
+  const currentSelectedSite = useMemo(() => {
+    return activeSites.find(s => s.id === selectedSiteId) || null;
+  }, [activeSites, selectedSiteId]);
 
   /**
    * Acquire Genuine Device GPS Coordinates
    */
   const acquireLiveGPS = (onSuccess?: (coords: { lat: number; lng: number }) => void) => {
     setGpsStatus('acquiring');
-    setFieldGpsAcquiring(true);
     setErrorMessage(null);
 
     if (!('geolocation' in navigator)) {
       setGpsStatus('unavailable');
       setErrorMessage('Geolocation is not supported by your mobile browser.');
-      setFieldGpsAcquiring(false);
-      setStage('failed');
       return;
     }
 
@@ -92,40 +70,24 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
 
         setUserCoords({ lat, lng, accuracy });
         setGpsStatus('locked');
-        setFieldGpsAcquiring(false);
 
-        // Fetch authentic physical place name from OpenStreetMap + BigDataCloud
-        reverseGeocode(lat, lng).then(setDetectedAddress);
-        const autoTown = getClosestTownName(lat, lng);
-        if (autoTown) {
-          setSelectedTown(autoTown);
-        }
-
-        // Calculate distance against current office center
-        const wp = await getWorkplaceSettings();
-        const dist = calculateDistanceMeters(lat, lng, wp.latitude, wp.longitude);
-        setDistance(dist);
-
-        if (dist <= wp.geofenceRadius) {
-          setStage('verified');
-        } else {
-          setStage('failed');
-        }
+        // Reverse geocode genuine physical place name
+        reverseGeocode(lat, lng).then(addr => {
+          setDetectedAddress(addr);
+        });
 
         if (onSuccess) onSuccess({ lat, lng });
       },
       (err) => {
         console.warn('Live geolocation error:', err);
         setGpsStatus('denied');
-        setFieldGpsAcquiring(false);
         if (err.code === 1) {
           setErrorMessage('Location permission was denied. Please allow location access in your browser settings to verify your physical presence.');
         } else if (err.code === 2) {
-          setErrorMessage('GPS position unavailable. Please ensure your device Location / GPS toggle is turned ON.');
+          setErrorMessage('GPS signal unavailable. Please ensure your device Location / GPS toggle is turned ON.');
         } else {
-          setErrorMessage('GPS acquisition timed out. Please tap "Retry GPS Fix" to capture your satellite location.');
+          setErrorMessage('GPS acquisition timed out. Please tap "Refresh GPS Fix" to try again.');
         }
-        setStage('failed');
       },
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
     );
@@ -143,45 +105,48 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
     };
   }, []);
 
-  const handleCalibrateCurrentOffice = async () => {
-    if (!userCoords) {
-      acquireLiveGPS((coords) => performCalibration(coords.lat, coords.lng));
-      return;
+  // Distance calculations
+  const officeDistance = useMemo(() => {
+    if (!userCoords) return null;
+    return calculateDistanceMeters(
+      userCoords.lat,
+      userCoords.lng,
+      workplace.latitude || DEFAULT_WORKPLACE.latitude,
+      workplace.longitude || DEFAULT_WORKPLACE.longitude
+    );
+  }, [userCoords, workplace]);
+
+  const isOfficeWithinGeofence = Boolean(
+    officeDistance !== null && officeDistance <= (workplace.geofenceRadius || 350)
+  );
+
+  const siteDistance = useMemo(() => {
+    if (!userCoords || !currentSelectedSite || !currentSelectedSite.latitude || !currentSelectedSite.longitude) {
+      return null;
     }
-    performCalibration(userCoords.lat, userCoords.lng);
-  };
+    return calculateDistanceMeters(
+      userCoords.lat,
+      userCoords.lng,
+      currentSelectedSite.latitude,
+      currentSelectedSite.longitude
+    );
+  }, [userCoords, currentSelectedSite]);
 
-  const performCalibration = async (lat: number, lng: number) => {
-    setCalibrating(true);
-    try {
-      const updated: WorkplaceSettings = {
-        ...workplace,
-        officeName: 'Department of Urban Roads (DUR HQ)',
-        latitude: lat,
-        longitude: lng,
-        geofenceRadius: 350,
-      };
-      await saveWorkplaceSettings(updated);
-      setWorkplace(updated);
-      setDistance(10);
-      setStage('verified');
-      setCalibratedNotice(`✓ Office HQ successfully calibrated to your current position (${lat.toFixed(5)}, ${lng.toFixed(5)}) with a 350m geofence!`);
-      setErrorMessage(null);
-    } catch (err) {
-      console.error('Error calibrating office:', err);
-    } finally {
-      setCalibrating(false);
-    }
-  };
+  const isSiteWithinGeofence = useMemo(() => {
+    if (selectedSiteId === 'custom') return true; // Custom sites allow check-in with GPS timestamp
+    if (siteDistance === null) return true; // If site has no coordinates yet, allow check-in with GPS stamp
+    const allowedRadius = currentSelectedSite?.radius || 600;
+    return siteDistance <= allowedRadius;
+  }, [siteDistance, currentSelectedSite, selectedSiteId]);
 
-  const handleCompleteCheckIn = async (mode: DutyMode = dutyMode) => {
-    const isFieldSite = mode === 'Field Site';
-
-    // If user has not acquired GPS yet, enforce GPS acquisition
+  /**
+   * Complete and Record Attendance Check-In
+   */
+  const handleCompleteCheckIn = async (mode: DutyMode, isOverride: boolean = false) => {
     if (!userCoords) {
-      setErrorMessage('Please wait for GPS satellite lock or tap "Acquire Live GPS Fix" before confirming.');
+      setErrorMessage('Please wait for GPS satellite lock or tap "Refresh GPS Fix" before confirming.');
       acquireLiveGPS(() => {
-        handleCompleteCheckIn(mode);
+        handleCompleteCheckIn(mode, isOverride);
       });
       return;
     }
@@ -189,31 +154,50 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
     setSubmitting(true);
     const now = new Date();
     const todayStr = getLocalDateString(now);
-
     const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-    const [startHour, startMin] = workplace.workStartTime.split(':').map(Number);
-    const limitMinutes = startHour * 60 + startMin + workplace.gracePeriodMinutes;
+
+    // Determine Punctuality Status
+    const [startHour, startMin] = (workplace.workStartTime || '08:00').split(':').map(Number);
+    const limitMinutes = startHour * 60 + startMin + (workplace.gracePeriodMinutes ?? 15);
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
-    const status: 'Present' | 'Late' = currentMinutes > limitMinutes ? 'Late' : 'Present';
+    const punctualityStatus: 'Present' | 'Late' = currentMinutes > limitMinutes ? 'Late' : 'Present';
 
     const employeeId = profile?.staffId || profile?.id || user?.uid || `MWI-${Math.floor(1000 + Math.random() * 9000)}`;
     const employeeName = profile?.name || user?.displayName || 'Staff Member';
 
-    const finalTown = selectedTown === 'Other' ? (customTown.trim() || 'Field Site') : (selectedTown || 'Field Site');
-    const baseCorridor = selectedCorridor === 'Other Active Road Corridor (Custom)' 
-      ? (customCorridor.trim() || 'Road Project Corridor') 
-      : (selectedCorridor || 'Active Road Corridor');
+    const isField = mode === 'Field Site';
+    let finalSiteName = workplace.officeName;
+    let distVal = officeDistance ?? 15;
+    let locationVerified = isOfficeWithinGeofence;
+    let isFlagged = false;
+    let flagReason = '';
 
-    const finalSiteName = isFieldSite 
-      ? `${finalTown} — ${baseCorridor}`
-      : workplace.officeName;
+    if (isField) {
+      if (selectedSiteId === 'custom') {
+        const town = customTown.trim() || 'Field Locality';
+        finalSiteName = customSiteName.trim() ? `${customSiteName.trim()} (${town})` : `Field Inspection (${town})`;
+        distVal = 0;
+        locationVerified = true;
+      } else if (currentSelectedSite) {
+        finalSiteName = `${currentSelectedSite.name} · ${currentSelectedSite.locality || 'Road Corridor'}`;
+        distVal = siteDistance ?? 0;
+        locationVerified = isSiteWithinGeofence;
+      }
+
+      if (isOverride || !locationVerified) {
+        isFlagged = true;
+        flagReason = `Out of range field check-in (${distVal}m away): Pending Admin Cross-Check`;
+      }
+    } else {
+      if (isOverride || !isOfficeWithinGeofence) {
+        isFlagged = true;
+        flagReason = `Outside Office HQ geofence (${distVal}m away): Pending Admin Cross-Check`;
+      }
+    }
 
     const lat = userCoords.lat;
     const lng = userCoords.lng;
-    const rawAddress = detectedAddress || getNearestLandmark(lat, lng);
-    const placeAddress = isFieldSite 
-      ? (rawAddress.toLowerCase().includes(finalTown.toLowerCase()) ? rawAddress : `${finalTown}, ${rawAddress}`)
-      : rawAddress;
+    const placeAddress = detectedAddress || getNearestLandmark(lat, lng) || 'Greater Accra Region';
 
     try {
       await recordCheckIn({
@@ -221,36 +205,40 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
         userId: user?.uid || profile?.id || 'emp_1',
         name: employeeName,
         category: profile?.category || 'Permanent Staff',
-        department: profile?.department || 'Engineering',
+        department: profile?.department || 'Operations',
         date: todayStr,
         dayLabel: now.toLocaleDateString('en-GB', { weekday: 'long' }),
         checkIn: timeStr,
         checkOut: '—',
-        status,
-        locationVerified: true,
+        status: punctualityStatus,
+        locationVerified: locationVerified && !isFlagged,
+        isFlagged,
+        flagReason: isFlagged ? flagReason : undefined,
         latitude: lat,
         longitude: lng,
         locationAddress: placeAddress,
-        distanceMeters: isFieldSite ? 0 : (distance ?? 15),
+        distanceMeters: distVal,
         photoURL: profile?.photoURL || user?.photoURL || undefined,
         dutyType: mode,
         siteName: finalSiteName,
-        absenceNote: isFieldSite ? siteNotes.trim() : undefined,
+        absenceNote: siteNotes.trim() ? siteNotes.trim() : (isFlagged ? flagReason : undefined),
       });
 
-      // Save for instant confirmation screen
+      // Save session confirmation info
       localStorage.setItem('metroattend_last_duty_type', mode);
       localStorage.setItem('metroattend_last_site_name', finalSiteName);
       localStorage.setItem('metroattend_last_site_address', placeAddress);
       localStorage.setItem('metroattend_last_site_coords', `${lat.toFixed(5)}° N, ${lng.toFixed(5)}° W`);
 
-      // Log notification
+      // Notification
       await addNotification({
-        title: isFieldSite ? '🚧 Road Project Site Check-In Logged' : (status === 'Late' ? 'Late Check-In Recorded' : 'Workplace Check-In Recorded'),
-        body: isFieldSite
-          ? `Site presence verified at ${finalSiteName} (${placeAddress}) at ${timeStr}.`
-          : `Check-in logged at ${timeStr}. GPS verified at ${workplace.officeName} (~${distance ?? 15}m).`,
-        type: status === 'Late' ? 'warning' : 'success',
+        title: isFlagged 
+          ? '⚠️ Attendance Submitted (Pending Admin Cross-Check)' 
+          : isField ? '🚧 Road Project Site Check-In Verified' : 'Workplace Check-In Recorded',
+        body: isFlagged
+          ? `Timestamp logged at ${timeStr}. Flagged for supervisor review (${flagReason}).`
+          : `Presence verified at ${finalSiteName} at ${timeStr}.`,
+        type: isFlagged ? 'warning' : 'success',
         time: `${timeStr} today`,
         timestamp: Date.now(),
         unread: true,
@@ -261,10 +249,7 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
       nav.setCheckInTime(timeStr);
       nav.navigate('checkin-success');
     } catch (e) {
-      console.error(e);
-      localStorage.setItem('metroattend_last_duty_type', mode);
-      localStorage.setItem('metroattend_last_site_name', finalSiteName);
-      localStorage.setItem('metroattend_last_site_coords', `${lat.toFixed(5)}° N, ${lng.toFixed(5)}° W`);
+      console.error('Check-in recording exception:', e);
       nav.setCheckInStatus('checked-in');
       nav.setCheckInTime(timeStr);
       nav.navigate('checkin-success');
@@ -289,8 +274,8 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
             <h1 className="text-xl sm:text-2xl font-display font-800">Attendance Verification</h1>
             <p className="text-white/60 text-xs mt-0.5">
               {dutyMode === 'Office HQ' 
-                ? `Authenticating presence at ${workplace.officeName}` 
-                : 'Logging civil engineering field inspection & road project presence'}
+                ? `Permanent headquarters check-in at ${workplace.officeName}` 
+                : 'Civil engineering road projects & field inspection check-in'}
             </p>
           </div>
 
@@ -330,14 +315,7 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
         </div>
       </div>
 
-      <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-6">
-        {calibratedNotice && (
-          <div className="p-3.5 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-900 text-xs font-display font-semibold flex items-center justify-between">
-            <span>{calibratedNotice}</span>
-            <button onClick={() => setCalibratedNotice(null)} className="text-emerald-700 font-bold ml-2">✕</button>
-          </div>
-        )}
-
+      <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-5">
         {/* Global Live GPS Indicator Bar */}
         <div className="bg-white rounded-xl border border-border p-3.5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <div className="flex items-center gap-2.5">
@@ -373,154 +351,127 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
 
         {/* MODE 1: OFFICE HQ VERIFICATION */}
         {dutyMode === 'Office HQ' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Visual Radar */}
             <div className="bg-white rounded-2xl border border-border p-6 shadow-xs flex flex-col items-center justify-center text-center relative overflow-hidden" style={{ minHeight: 320 }}>
               <div className="relative w-44 h-44 flex items-center justify-center mb-4">
-                {/* Geofence pulse rings */}
                 <div className={`absolute inset-0 rounded-full border-2 transition-all duration-700 ${
-                  stage === 'verified' ? 'border-emerald-400 bg-emerald-50/60 animate-ping opacity-30' :
-                  stage === 'failed' ? 'border-red-300 bg-red-50/40' :
+                  isOfficeWithinGeofence ? 'border-emerald-400 bg-emerald-50/60 animate-ping opacity-30' :
+                  userCoords ? 'border-amber-400 bg-amber-50/40' :
                   'border-blue-300 bg-blue-50/30 animate-pulse'
                 }`} />
                 <div className={`absolute inset-4 rounded-full border-2 ${
-                  stage === 'verified' ? 'border-emerald-500 bg-emerald-50/80' :
-                  stage === 'failed' ? 'border-red-400 bg-red-50/60' :
+                  isOfficeWithinGeofence ? 'border-emerald-500 bg-emerald-50/80' :
+                  userCoords ? 'border-amber-500 bg-amber-50/60' :
                   'border-blue-400 bg-blue-50/50'
                 }`} />
-                
-                {/* Center marker */}
                 <div className={`relative z-10 w-16 h-16 rounded-2xl flex items-center justify-center text-2xl shadow-md ${
-                  stage === 'verified' ? 'bg-emerald-600 text-white' :
-                  stage === 'failed' ? 'bg-red-600 text-white' :
+                  isOfficeWithinGeofence ? 'bg-emerald-600 text-white' :
+                  userCoords ? 'bg-amber-600 text-white' :
                   'bg-navy text-white'
                 }`}>
-                  {stage === 'verified' ? '✓' : stage === 'failed' ? '✕' : '🛰️'}
+                  {isOfficeWithinGeofence ? '✓' : userCoords ? '📍' : '🛰️'}
                 </div>
               </div>
 
               <div className="text-base font-display font-800 text-slate-900 mb-1">
-                {stage === 'verified' ? 'Location Verified & Authorized' :
-                 stage === 'failed' ? 'Outside Authorized Workplace Perimeter' :
+                {isOfficeWithinGeofence ? 'Office Location Verified' :
+                 userCoords ? 'Outside Permanent HQ Perimeter' :
                  'Verifying Satellite Distance…'}
               </div>
               <p className="text-slate-500 text-xs font-sans max-w-xs">
-                {stage === 'verified' 
-                  ? `Your device is inside the ${workplace.officeName} geofence (~${distance ?? 15}m from center).`
-                  : stage === 'failed'
-                  ? `Your live GPS is ${distance ? `${distance}m` : 'further'} away from HQ center (authorized radius is ${workplace.geofenceRadius}m).`
-                  : 'Contacting device GPS satellites to verify office geofence proximity…'}
+                {isOfficeWithinGeofence 
+                  ? `Your device is inside the ${workplace.officeName} compound geofence (~${officeDistance ?? 15}m from center).`
+                  : userCoords
+                  ? `Your live GPS is ${officeDistance ? `${(officeDistance / 1000).toFixed(2)} km` : 'away'} from HQ (authorized compound radius is ${workplace.geofenceRadius}m).`
+                  : 'Acquiring satellite signal…'}
               </p>
             </div>
 
-            {/* Action / Calibration Card */}
+            {/* Actions Card */}
             <div className="bg-surface rounded-2xl border border-border p-6 shadow-xs flex flex-col justify-between">
-              {stage === 'verified' && (
+              {isOfficeWithinGeofence ? (
                 <div className="space-y-4">
                   <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200">
                     <div className="text-xs font-display font-bold text-emerald-900 mb-1 flex items-center gap-1.5">
-                      <span>✓</span> Authorized Check-In Window Open
+                      <span>✓</span> Permanent Office Perimeter Confirmed
                     </div>
                     <div className="text-[11px] text-emerald-800 leading-relaxed">
-                      Physical presence confirmed at <strong>{workplace.officeName}</strong>. Tap confirm to record your morning timestamp.
+                      Presence confirmed at <strong>{workplace.officeName}</strong>. Tap below to record your official attendance timestamp.
                     </div>
                   </div>
 
                   <div className="space-y-2 text-xs">
                     <div className="flex justify-between py-2 border-b border-border">
-                      <span className="text-muted">Detected Street / Area:</span>
-                      <span className="font-display font-bold text-slate-800">{detectedAddress || 'Ministries, Accra'}</span>
+                      <span className="text-muted">Office Facility:</span>
+                      <span className="font-display font-bold text-slate-800">{workplace.officeName}</span>
                     </div>
                     <div className="flex justify-between py-2 border-b border-border">
-                      <span className="text-muted">Distance to Center:</span>
-                      <span className="font-mono text-slate-800">{distance ?? 15} meters</span>
+                      <span className="text-muted">Physical Area:</span>
+                      <span className="font-mono text-slate-800">{detectedAddress || 'Ministries, Accra'}</span>
                     </div>
                     <div className="flex justify-between py-2 border-b border-border">
-                      <span className="text-muted">Authorized Radius:</span>
-                      <span className="font-mono text-slate-800">{workplace.geofenceRadius} meters</span>
+                      <span className="text-muted">Proximity to HQ:</span>
+                      <span className="font-mono text-slate-800">{officeDistance ?? 15} meters</span>
                     </div>
                   </div>
 
                   <button
                     type="button"
-                    onClick={() => handleCompleteCheckIn('Office HQ')}
+                    onClick={() => handleCompleteCheckIn('Office HQ', false)}
                     disabled={submitting}
                     className="w-full bg-navy hover:bg-navy-dark text-white py-3.5 rounded-xl font-display font-bold text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
                   >
                     {submitting ? 'Recording Verified Check-in…' : 'Confirm Office Check-In →'}
                   </button>
                 </div>
-              )}
-
-              {stage === 'failed' && (
+              ) : (
                 <div className="space-y-4">
-                  <div className="p-4 bg-red-50 rounded-xl border border-red-200 text-xs">
-                    <div className="font-display font-bold text-red-900 mb-1">
-                      Outside Geofence Perimeter
+                  <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 text-xs">
+                    <div className="font-display font-bold text-amber-900 mb-1 flex items-center gap-1.5">
+                      <span>⚠️</span> Outside Office Headquarters Perimeter
                     </div>
-                    <div className="text-red-700 leading-relaxed text-[11px]">
-                      {errorMessage || `Your device GPS is ${distance ? `${(distance / 1000).toFixed(2)} km` : 'away'} from HQ center. Office check-in requires being within ${workplace.geofenceRadius}m.`}
+                    <div className="text-amber-800 leading-relaxed text-[11px]">
+                      Your GPS shows you are {officeDistance ? `${(officeDistance / 1000).toFixed(2)} km` : 'away'} from {workplace.officeName}.
                     </div>
                   </div>
 
-                  {/* 1-Tap Office Calibration */}
-                  <div className="p-4 bg-emerald-50 rounded-xl border-2 border-emerald-400 text-xs space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="font-display font-bold text-emerald-950 flex items-center gap-1">
-                        <span>📍</span> In Your Office Building Right Now?
-                      </span>
-                      <span className="text-[9px] font-mono font-bold bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-full">
-                        Instant Setup
-                      </span>
+                  {/* Flexible Check-in Option with Cross-Check Flag */}
+                  <div className="p-4 bg-white rounded-xl border border-slate-200 space-y-2.5">
+                    <div className="font-display font-bold text-xs text-slate-800">
+                      Need to Record Timestamp Off-Site?
                     </div>
-                    <p className="text-emerald-800 text-[11px] leading-relaxed">
-                      Default coordinates were set to Ministries. Tap below to calibrate <strong>your current physical building position</strong> as the official Office HQ with a 350m compound perimeter.
+                    <p className="text-slate-600 text-[11px] leading-relaxed">
+                      You can still record your exact timestamp and physical location now. It will be logged and submitted for <strong>administrative cross-check on the admin dashboard</strong>.
                     </p>
                     <button
                       type="button"
-                      onClick={handleCalibrateCurrentOffice}
-                      disabled={calibrating}
-                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-display font-bold text-xs rounded-xl transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                      onClick={() => handleCompleteCheckIn('Office HQ', true)}
+                      disabled={submitting}
+                      className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-display font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                     >
-                      <span>🎯</span>
-                      <span>{calibrating ? 'Saving Coordinates…' : 'Set My Current Location as Office HQ'}</span>
+                      <span>⏱️</span>
+                      <span>{submitting ? 'Submitting Timestamp…' : 'Record Timestamp (Pending Admin Cross-Check)'}</span>
                     </button>
                   </div>
 
-                  {/* Switch to Site Mode */}
-                  <div className="p-3 bg-blue-50 rounded-xl border border-blue-200 text-xs">
-                    <div className="text-navy font-display font-bold mb-1">On Road Site Inspection Duty?</div>
-                    <p className="text-slate-600 text-[11px] mb-2 leading-relaxed">
-                      If you are deployed directly to a road project corridor, bypass HQ geofence using Field Site Check-In.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setDutyMode('Field Site')}
-                      className="w-full py-2 bg-navy text-white text-xs font-display font-bold rounded-lg hover:bg-navy-dark transition-all cursor-pointer"
-                    >
-                      Switch to Field Road Site Check-In →
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {stage === 'checking' && (
-                <div className="py-12 text-center space-y-3">
-                  <div className="w-8 h-8 border-3 border-navy border-t-transparent rounded-full animate-spin mx-auto" />
-                  <div className="text-xs font-display font-bold text-slate-800">Acquiring High-Precision GPS…</div>
-                  <p className="text-[11px] text-muted max-w-xs mx-auto">
-                    Please ensure device Location is enabled. Checking distance against {workplace.officeName}…
-                  </p>
+                  {/* Switch to Road Site button */}
+                  <button
+                    type="button"
+                    onClick={() => setDutyMode('Field Site')}
+                    className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-display font-bold text-xs rounded-xl transition-all cursor-pointer text-center"
+                  >
+                    Deployed to a Road Project Site instead? Switch Mode →
+                  </button>
                 </div>
               )}
             </div>
           </div>
         ) : (
           /* MODE 2: ROAD PROJECTS & FIELD SITE CHECK-IN */
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
             {/* Visual Radar Card (Left 3 cols) */}
             <div className="lg:col-span-3 rounded-2xl overflow-hidden border border-amber-300 bg-linear-to-b from-amber-500/10 via-white to-amber-500/5 p-6 flex flex-col justify-between relative shadow-xs" style={{ minHeight: 360 }}>
-              {/* Construction warning top bar */}
               <div className="absolute top-0 left-0 right-0 h-2" style={{
                 backgroundImage: 'repeating-linear-gradient(45deg, #f59e0b, #f59e0b 12px, #0f172a 12px, #0f172a 24px)'
               }} />
@@ -542,26 +493,26 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
                 {/* Selected Road Project Display */}
                 <div className="bg-white/95 backdrop-blur-xs rounded-2xl p-5 border border-amber-200 shadow-sm mb-4">
                   <div className="text-[11px] font-display font-bold uppercase tracking-wider text-muted mb-1">
-                    Assigned Road Project Corridor
+                    Assigned Project Site / Corridor
                   </div>
                   <div className="text-base sm:text-lg font-display font-800 text-slate-900 leading-snug">
-                    {selectedCorridor === 'Other Active Road Corridor (Custom)'
-                      ? (customCorridor.trim() || 'Specify Custom Project Corridor…')
-                      : (selectedCorridor || 'Active Road Corridor')}
+                    {selectedSiteId === 'custom'
+                      ? (customSiteName.trim() || 'Custom Road Project / Inspection')
+                      : (currentSelectedSite?.name || 'Select Project Site…')}
                   </div>
                   <div className="text-xs text-slate-500 mt-1 flex items-center gap-2">
-                    <span>Department of Urban Roads</span>
+                    <span>📍 {currentSelectedSite?.locality || customTown || 'Greater Accra'}</span>
                     <span>•</span>
-                    <span className="text-navy font-semibold">Civil Engineering & Maintenance</span>
+                    <span className="text-navy font-semibold">{currentSelectedSite?.corridor || 'Civil Works'}</span>
                   </div>
                 </div>
 
                 {/* Verified Field Locality Card */}
-                <div className="bg-white rounded-xl p-4 border border-amber-200 shadow-2xs space-y-2.5">
+                <div className="bg-white rounded-xl p-4 border border-amber-200 shadow-2xs space-y-2">
                   <div className="text-[10px] font-mono text-muted uppercase font-bold flex items-center justify-between">
-                    <span>Physical Field Locality</span>
+                    <span>Physical Device Position</span>
                     <span className="text-[9px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-bold border border-emerald-200">
-                      {userCoords?.accuracy ? `±${userCoords.accuracy}m Accuracy` : 'GPS Acquiring…'}
+                      {userCoords?.accuracy ? `±${userCoords.accuracy}m Accuracy` : 'Acquiring GPS…'}
                     </span>
                   </div>
                   <div className="flex items-start justify-between gap-2">
@@ -569,172 +520,152 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
                       <span className="text-xl flex-shrink-0 mt-0.5">📍</span>
                       <div>
                         <div className="text-sm font-display font-extrabold text-slate-900 leading-snug">
-                          {selectedTown === 'Other' ? (customTown || 'Field Site') : selectedTown}
-                        </div>
-                        <div className="text-xs text-slate-600 mt-0.5 leading-tight">
                           {detectedAddress || (userCoords ? getNearestLandmark(userCoords.lat, userCoords.lng) : 'Detecting your live position…')}
                         </div>
+                        {userCoords && (
+                          <div className="text-[10px] font-mono text-slate-500 mt-0.5">
+                            {userCoords.lat.toFixed(5)}° N, {userCoords.lng.toFixed(5)}° W
+                          </div>
+                        )}
                       </div>
                     </div>
-                    {userCoords && (
-                      <a
-                        href={`https://www.google.com/maps/search/?api=1&query=${userCoords.lat},${userCoords.lng}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex-shrink-0 px-2.5 py-1 bg-slate-50 hover:bg-slate-100 text-navy font-display font-bold text-[10px] rounded-lg border border-slate-200 shadow-2xs flex items-center gap-1 transition-colors"
-                        title="Verify coordinates on Google Maps"
-                      >
-                        <span>🗺️</span>
-                        <span>Google Maps</span>
-                      </a>
-                    )}
                   </div>
-                  <div className="text-[10px] font-mono text-slate-500 pt-1 border-t border-slate-100">
-                    {userCoords ? (
-                      <span>GPS Satellite Locked: <strong>{userCoords.lat.toFixed(5)}° N, {userCoords.lng.toFixed(5)}° W</strong></span>
-                    ) : (
-                      <span className="text-amber-700 font-semibold animate-pulse">🛰️ Acquiring live GPS satellite coordinates…</span>
-                    )}
-                  </div>
+
+                  {/* Range feedback if site has coordinates */}
+                  {currentSelectedSite?.latitude && currentSelectedSite?.longitude && userCoords && (
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                      <span className="text-slate-500">Distance to Site Center:</span>
+                      <span className={`font-mono font-bold ${isSiteWithinGeofence ? 'text-emerald-700' : 'text-amber-800'}`}>
+                        {siteDistance !== null ? `${siteDistance}m (Range: ${currentSelectedSite.radius || 600}m)` : 'Calculating…'}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Real-time sync note */}
-              <div className="mt-4 bg-slate-900 text-white rounded-xl p-3.5 flex items-center justify-between text-xs">
+              <div className="mt-4 bg-slate-900 text-white rounded-xl p-3 flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
-                  <span className="text-lg">🛰️</span>
+                  <span className="text-base">🛰️</span>
                   <div>
-                    <div className="font-display font-bold">Tamper-Proof Field Geotag</div>
-                    <div className="text-white/60 text-[10px]">Exact town name & satellite coordinates stamped to audit ledger</div>
+                    <div className="font-display font-bold">Audit-Ready Geotag</div>
+                    <div className="text-white/60 text-[10px]">Physical place name and GPS stamped to attendance record</div>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => acquireLiveGPS()}
-                  disabled={fieldGpsAcquiring}
-                  className="px-2.5 py-1.5 bg-white/10 hover:bg-white/20 text-white text-[11px] font-display font-semibold rounded-lg transition-colors cursor-pointer"
+                  className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-white text-[11px] font-display font-semibold rounded-lg transition-colors cursor-pointer"
                 >
-                  {fieldGpsAcquiring ? 'Acquiring…' : '↻ Refresh GPS'}
+                  ↻ Refresh
                 </button>
               </div>
             </div>
 
-            {/* Field Site Input Form (Right 2 cols) */}
-            <div className="lg:col-span-2 flex flex-col justify-between bg-surface rounded-2xl border border-border p-6 space-y-4">
+            {/* Field Site Selector & Submit Form (Right 2 cols) */}
+            <div className="lg:col-span-2 flex flex-col justify-between bg-surface rounded-2xl border border-border p-5 space-y-4">
               <div>
                 <div className="text-sm font-display font-bold text-slate-800 mb-1 flex items-center gap-1.5">
                   <span>📍</span>
-                  <span>Project Corridor Selection</span>
+                  <span>Select Deployed Project Site</span>
                 </div>
-                <p className="text-xs text-muted mb-4">
-                  Select your deployed town and active road project or inspection site:
+                <p className="text-xs text-muted mb-3.5">
+                  Choose the road project or field location assigned by administration:
                 </p>
 
-                <div className="space-y-3.5">
-                  {/* Town / Locality Chips */}
+                <div className="space-y-3">
                   <div>
-                    <label className="text-[11px] font-display font-bold text-slate-700 uppercase tracking-wide block mb-1.5 flex items-center justify-between">
-                      <span>Town / Area Locality</span>
-                      <span className="text-[10px] text-amber-800 font-mono font-normal">Auto-detected or Tap</span>
-                    </label>
-                    <div className="flex flex-wrap gap-1 mb-2">
-                      {['Dansoman', 'Kasoa', 'Amasaman', 'Spintex', 'Pokuase', 'Lapaz', 'Tema', 'Adenta'].map(town => (
-                        <button
-                          type="button"
-                          key={town}
-                          onClick={() => setSelectedTown(town)}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-display font-bold transition-all cursor-pointer ${
-                            selectedTown === town
-                              ? 'bg-amber-500 text-slate-950 shadow-2xs scale-102 ring-2 ring-amber-400/50'
-                              : 'bg-white border border-slate-200 text-slate-600 hover:border-amber-400'
-                          }`}
-                        >
-                          {town}
-                        </button>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() => setSelectedTown('Other')}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-display font-bold transition-all cursor-pointer ${
-                          selectedTown === 'Other'
-                            ? 'bg-amber-500 text-slate-950 shadow-2xs scale-102 ring-2 ring-amber-400/50'
-                            : 'bg-white border border-slate-200 text-slate-600 hover:border-amber-400'
-                        }`}
-                      >
-                        Other…
-                      </button>
-                    </div>
-                    {selectedTown === 'Other' && (
-                      <input
-                        type="text"
-                        placeholder="Enter town name (e.g. Kokrobite, Dome, Madina)"
-                        value={customTown}
-                        onChange={e => setCustomTown(e.target.value)}
-                        className="w-full bg-white border border-amber-300 rounded-xl px-3 py-2 text-xs font-display text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/40 mb-2"
-                      />
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-display font-bold text-slate-600 uppercase tracking-wide block mb-1.5">
-                      Road Project Corridor
+                    <label className="text-[11px] font-mono text-slate-600 uppercase font-bold block mb-1">
+                      Authorized Project Sites ({activeSites.length})
                     </label>
                     <select
-                      value={selectedCorridor}
-                      onChange={(e) => setSelectedCorridor(e.target.value)}
-                      className="w-full bg-white border border-border rounded-xl px-3 py-2.5 text-xs font-display font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/30 cursor-pointer"
+                      value={selectedSiteId}
+                      onChange={e => setSelectedSiteId(e.target.value)}
+                      className="w-full bg-white border border-border rounded-xl px-3 py-2.5 text-xs font-display font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/30 cursor-pointer"
                     >
-                      {activeCorridors.map((corridor) => (
-                        <option key={corridor} value={corridor}>
-                          {corridor}
+                      {activeSites.map(site => (
+                        <option key={site.id} value={site.id}>
+                          {site.name} ({site.locality || 'Field Site'})
                         </option>
                       ))}
+                      <option value="custom">Other Active Site (Manual Entry)…</option>
                     </select>
                   </div>
 
-                  {selectedCorridor === 'Other Active Road Corridor (Custom)' && (
-                    <div>
-                      <label className="text-[11px] font-display font-bold text-slate-600 uppercase tracking-wide block mb-1.5">
-                        Specify Corridor / Road Name
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Kasoa Interchange Slip Road, Beach Road"
-                        value={customCorridor}
-                        onChange={(e) => setCustomCorridor(e.target.value)}
-                        className="w-full bg-white border border-amber-300 rounded-xl px-3 py-2 text-xs font-display text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
-                      />
+                  {selectedSiteId === 'custom' && (
+                    <div className="space-y-2 p-3 bg-white rounded-xl border border-amber-300">
+                      <div>
+                        <label className="text-[10px] font-mono text-slate-600 uppercase font-bold block mb-1">
+                          Custom Site / Project Name
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Kokrobite Access Road Culverts"
+                          value={customSiteName}
+                          onChange={e => setCustomSiteName(e.target.value)}
+                          className="w-full bg-surface border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-mono text-slate-600 uppercase font-bold block mb-1">
+                          Town / Locality
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Kokrobite, Kasoa, Amasaman"
+                          value={customTown}
+                          onChange={e => setCustomTown(e.target.value)}
+                          className="w-full bg-surface border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800"
+                        />
+                      </div>
                     </div>
                   )}
 
                   <div>
-                    <label className="text-[11px] font-display font-bold text-slate-600 uppercase tracking-wide block mb-1.5">
-                      Site Task / Remarks (Optional)
+                    <label className="text-[11px] font-mono text-slate-600 uppercase font-bold block mb-1">
+                      Field Notes / Remarks (Optional)
                     </label>
                     <input
                       type="text"
-                      placeholder="e.g. Road sub-base compaction, culvert inspection"
+                      placeholder="e.g. Road sub-base compaction, route alignment survey"
                       value={siteNotes}
-                      onChange={(e) => setSiteNotes(e.target.value)}
+                      onChange={e => setSiteNotes(e.target.value)}
                       className="w-full bg-white border border-border rounded-xl px-3 py-2 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-navy/20"
                     />
                   </div>
                 </div>
               </div>
 
+              {/* Submit Buttons */}
               <div className="space-y-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => handleCompleteCheckIn('Field Site')}
-                  disabled={submitting}
-                  className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-display font-800 py-3.5 rounded-xl text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  {submitting ? 'Logging Site Attendance…' : 'Confirm Road Site Check-In 🚧 →'}
-                </button>
+                {isSiteWithinGeofence ? (
+                  <button
+                    type="button"
+                    onClick={() => handleCompleteCheckIn('Field Site', false)}
+                    disabled={submitting}
+                    className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-display font-extrabold py-3.5 rounded-xl text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                  >
+                    {submitting ? 'Recording Verified Check-in…' : 'Confirm Road Site Check-In 🚧 →'}
+                  </button>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="p-2.5 bg-amber-50 border border-amber-200 text-[11px] text-amber-900 rounded-xl">
+                      You are outside the designated {currentSelectedSite?.radius || 600}m perimeter for this site. You can still submit your timestamp for admin verification.
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCompleteCheckIn('Field Site', true)}
+                      disabled={submitting}
+                      className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-display font-extrabold py-3.5 rounded-xl text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                    >
+                      {submitting ? 'Submitting Timestamp…' : 'Record Timestamp (Flagged for Admin Cross-Check) ⚠️'}
+                    </button>
+                  </div>
+                )}
+
                 <div className="text-center text-[10px] text-muted font-mono">
                   {userCoords 
-                    ? `Tagged with live satellite fix (${userCoords.lat.toFixed(4)}, ${userCoords.lng.toFixed(4)})` 
-                    : 'GPS will be verified automatically upon confirmation'}
+                    ? `Tagged with GPS fix (${userCoords.lat.toFixed(4)}, ${userCoords.lng.toFixed(4)})` 
+                    : 'GPS will be confirmed on submission'}
                 </div>
               </div>
             </div>

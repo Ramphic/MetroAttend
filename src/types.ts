@@ -89,6 +89,9 @@ export interface AttendanceRecord {
   dutyType?: 'Office HQ' | 'Field Site';
   siteName?: string;
   locationAddress?: string;
+  isFlagged?: boolean;
+  flagReason?: string;
+  verifiedByAdmin?: boolean;
 }
 
 export interface WorkplaceSettings {
@@ -119,6 +122,9 @@ export interface RoadProjectSite {
   name: string;
   corridor: string;
   locality?: string;
+  latitude?: number;
+  longitude?: number;
+  radius?: number;
   status: 'Active' | 'Completed';
   createdAt?: string;
 }

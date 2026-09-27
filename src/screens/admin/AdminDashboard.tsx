@@ -8,7 +8,8 @@ import {
   getAllAttendanceRecords, 
   sendBroadcastAnnouncement, 
   exportRecordsToCSV,
-  getLocalDateString 
+  getLocalDateString,
+  approveFlaggedAttendanceRecord
 } from '../../lib/firebase';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -161,6 +162,7 @@ export default function AdminDashboard({ nav }: { nav: NavProps }) {
   };
 
   const sharedDeviceCount = records.filter(r => r.isSharedDevice).length;
+  const flaggedCount = records.filter(r => r.isFlagged && !r.verifiedByAdmin).length;
 
   return (
     <AdminShell nav={nav}>
@@ -184,6 +186,31 @@ export default function AdminDashboard({ nav }: { nav: NavProps }) {
           </div>
         </div>
       </div>
+
+      {/* Flagged / Pending Cross-Check Banner */}
+      {flaggedCount > 0 && (
+        <div className="mb-4 bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-900 flex items-center justify-center text-xl flex-shrink-0">
+              🚧
+            </div>
+            <div>
+              <h3 className="text-sm font-display font-bold text-amber-900">
+                Field Site Alert: {flaggedCount} Check-In{flaggedCount > 1 ? 's' : ''} Pending Admin Cross-Check
+              </h3>
+              <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
+                Site engineers or off-site personnel clocked in outside standard perimeters. Review and 1-click verify their timestamps in the table below.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => { nav.setAdminTab('attendance'); nav.navigate('admin-attendance'); }}
+            className="self-start sm:self-center px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-display font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer whitespace-nowrap"
+          >
+            Review in Roster →
+          </button>
+        </div>
+      )}
 
       {/* Anti-Proxy Shared Device Warning Banner */}
       {sharedDeviceCount > 0 && (
@@ -363,13 +390,66 @@ export default function AdminDashboard({ nav }: { nav: NavProps }) {
                     <td className="px-5 py-3.5 text-xs font-mono text-slate-700">{row.checkIn}</td>
                     <td className="px-5 py-3.5 text-xs font-mono text-slate-400">{row.checkOut}</td>
                     <td className="px-5 py-3.5">
-                      {row.locationVerified ? (
-                        <span className="text-success text-[10px] font-display font-600 flex items-center gap-1">
-                          <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-                          GPS Verified {row.distanceMeters ? `(~${row.distanceMeters}m)` : ''}
-                        </span>
+                      {row.isFlagged && !row.verifiedByAdmin ? (
+                        <div className="flex flex-col gap-1">
+                          <span className="text-amber-800 bg-amber-100 border border-amber-300 text-[10px] font-display font-bold px-2 py-0.5 rounded-md flex items-center gap-1 w-fit">
+                            <span>⚠️</span> Pending Cross-Check
+                          </span>
+                          <span className="text-xs font-display font-semibold text-slate-800 truncate max-w-[140px]" title={row.siteName || 'Off-Site Location'}>
+                            {row.siteName || 'Off-Site Location'}
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-500">
+                            {row.distanceMeters ? `~${row.distanceMeters}m away` : 'Custom location'}
+                          </span>
+                          {row.latitude && row.longitude && (
+                            <a
+                              href={`https://www.google.com/maps/search/?api=1&query=${row.latitude},${row.longitude}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-[10px] text-navy font-display font-bold hover:underline flex items-center gap-1 w-fit"
+                            >
+                              <span>🗺️</span> View Map
+                            </a>
+                          )}
+                          {row.id && (
+                            <button
+                              type="button"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                await approveFlaggedAttendanceRecord(row.id!);
+                                setRecords(prev => prev.map(r => r.id === row.id ? { ...r, isFlagged: false, verifiedByAdmin: true, locationVerified: true } : r));
+                              }}
+                              className="mt-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-display font-bold px-2 py-1 rounded-md transition-all w-fit shadow-xs cursor-pointer flex items-center gap-1"
+                            >
+                              <span>✓</span> Approve Check-In
+                            </button>
+                          )}
+                        </div>
+                      ) : row.verifiedByAdmin ? (
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-emerald-800 text-[10px] font-display font-bold flex items-center gap-1 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-md w-fit">
+                            <span>✓</span> Cross-Checked
+                          </span>
+                          <span className="text-xs font-display font-medium text-slate-700 truncate max-w-[140px]" title={row.siteName || 'Field Duty'}>
+                            {row.siteName || 'Field Duty'}
+                          </span>
+                        </div>
+                      ) : row.locationVerified ? (
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-success text-[10px] font-display font-semibold flex items-center gap-1">
+                            <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                            {row.dutyType === 'Field Site' ? '🚧 Site Verified' : '🏢 HQ Verified'}
+                          </span>
+                          <span className="text-xs font-display font-medium text-slate-700 truncate max-w-[140px]" title={row.siteName || 'Office HQ'}>
+                            {row.siteName || 'Office HQ'}
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-500">
+                            (~{row.distanceMeters ?? 0}m)
+                          </span>
+                        </div>
                       ) : (
-                        <span className="text-danger text-[10px] font-display font-600">Failed</span>
+                        <span className="text-danger text-[10px] font-display font-semibold">Failed</span>
                       )}
                     </td>
                     <td className="px-5 py-3.5">

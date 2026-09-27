@@ -9,7 +9,8 @@ import {
   exportRecordsToCSV,
   getLocalDateString,
   resetAllTodayAttendance,
-  resetTodayAttendance
+  resetTodayAttendance,
+  approveFlaggedAttendanceRecord
 } from '../../lib/firebase';
 import { getNearestLandmark } from '../../lib/geo';
 
@@ -19,6 +20,7 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
   const [deptFilter, setDeptFilter] = useState('All');
   const [onlyFlaggedDevices, setOnlyFlaggedDevices] = useState(false);
   const [onlyFieldSites, setOnlyFieldSites] = useState(false);
+  const [onlyPendingCrossCheck, setOnlyPendingCrossCheck] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => getLocalDateString());
   const [editingRow, setEditingRow] = useState<AttendanceRecord | null>(null);
   const [savingStatus, setSavingStatus] = useState(false);
@@ -43,7 +45,8 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
     const matchDate = !selectedDate || row.date === selectedDate;
     const matchFlagged = !onlyFlaggedDevices || Boolean(row.isSharedDevice);
     const matchFieldSite = !onlyFieldSites || row.dutyType === 'Field Site';
-    return matchStatus && matchDept && matchDate && matchFlagged && matchFieldSite;
+    const matchPendingCrossCheck = !onlyPendingCrossCheck || (Boolean(row.isFlagged) && !row.verifiedByAdmin);
+    return matchStatus && matchDept && matchDate && matchFlagged && matchFieldSite && matchPendingCrossCheck;
   });
 
   const presentCount = filtered.filter(r => r.status === 'Present').length;
@@ -52,6 +55,18 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
   const locationVerifiedCount = filtered.filter(r => r.locationVerified).length;
   const sharedDeviceCount = records.filter(r => r.isSharedDevice).length;
   const fieldSiteCount = records.filter(r => r.dutyType === 'Field Site').length;
+  const pendingCrossCheckCount = records.filter(r => r.isFlagged && !r.verifiedByAdmin).length;
+
+  const handleApproveRecord = async (recordId: string) => {
+    try {
+      await approveFlaggedAttendanceRecord(recordId);
+      setRecords(prev => prev.map(r => r.id === recordId ? { ...r, isFlagged: false, verifiedByAdmin: true, locationVerified: true } : r));
+      setResetMsg("✓ Field attendance record approved and marked as verified.");
+      setTimeout(() => setResetMsg(null), 4000);
+    } catch (err) {
+      console.error('Error approving record:', err);
+    }
+  };
 
   const handleUpdateStatus = async (recordId: string, newStatus: AttendanceStatus) => {
     setSavingStatus(true);
@@ -213,6 +228,24 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
                 </span>
               )}
             </button>
+
+            {/* Pending Admin Cross-Check Filter */}
+            <button
+              onClick={() => setOnlyPendingCrossCheck(prev => !prev)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-display font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                onlyPendingCrossCheck
+                  ? 'bg-amber-500 text-slate-950 shadow-xs font-extrabold'
+                  : 'bg-surface text-amber-900 border border-amber-300 hover:bg-amber-50'
+              }`}
+            >
+              <span>⚠️</span>
+              <span>Pending Cross-Check</span>
+              {pendingCrossCheckCount > 0 && (
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${onlyPendingCrossCheck ? 'bg-amber-950 text-white' : 'bg-amber-200 text-amber-900 font-bold'}`}>
+                  {pendingCrossCheckCount}
+                </span>
+              )}
+            </button>
           </div>
 
           {/* Dept filter */}
@@ -230,12 +263,13 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
       </div>
 
       {/* Real Dynamic Summary strip */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
         {[
           { label: 'Present Today', val: presentCount, color: 'text-success', bg: 'bg-success-bg' },
           { label: 'Late Arrivals', val: lateCount, color: 'text-late', bg: 'bg-late-bg' },
           { label: 'Recorded Absent', val: absentCount, color: 'text-danger', bg: 'bg-danger-bg' },
           { label: 'Road Site Duty', val: fieldSiteCount, color: 'text-amber-800', bg: 'bg-amber-50' },
+          { label: 'Pending Cross-Check', val: pendingCrossCheckCount, color: pendingCrossCheckCount > 0 ? 'text-amber-900 font-bold' : 'text-slate-600', bg: pendingCrossCheckCount > 0 ? 'bg-amber-100 border-amber-300 border-2' : 'bg-slate-50' },
           { label: 'GPS Verified', val: locationVerifiedCount, color: 'text-navy', bg: 'bg-navy-50' },
         ].map(s => (
           <div key={s.label} className={`${s.bg} rounded-2xl p-4 border border-slate-100 shadow-xs`}>
@@ -291,7 +325,58 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
                   <td className="px-5 py-3.5 text-xs font-mono text-slate-700">{row.checkIn}</td>
                   <td className="px-5 py-3.5 text-xs font-mono text-slate-400">{row.checkOut}</td>
                   <td className="px-5 py-3.5">
-                    {row.dutyType === 'Field Site' ? (
+                    {row.isFlagged && !row.verifiedByAdmin ? (
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-amber-900 text-[10px] font-display font-bold flex items-center gap-1 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md w-fit">
+                          <span>⚠️</span> Pending Admin Cross-Check
+                        </span>
+                        <span className="text-xs font-display font-bold text-slate-800 truncate max-w-[180px]" title={row.siteName || 'Off-Site Corridor'}>
+                          {row.siteName || 'Off-Site Corridor'}
+                        </span>
+                        <span className="text-[11px] font-display font-medium text-amber-800">
+                          {row.flagReason || 'Outside Perimeter'} {row.distanceMeters ? `(~${row.distanceMeters}m away)` : ''}
+                        </span>
+                        <span className="text-[10px] font-mono text-slate-500 truncate max-w-[180px]" title={row.locationAddress}>
+                          {row.locationAddress || 'Off-site Coordinates'}
+                        </span>
+                        {row.latitude && row.longitude && (
+                          <a
+                            href={`https://www.google.com/maps/search/?api=1&query=${row.latitude},${row.longitude}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[10px] text-navy font-display font-bold hover:underline flex items-center gap-1 mt-0.5"
+                            title="View coordinates on Google Maps"
+                          >
+                            <span>🗺️</span>
+                            <span>View on Google Maps</span>
+                          </a>
+                        )}
+                      </div>
+                    ) : row.verifiedByAdmin ? (
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-emerald-800 text-[10px] font-display font-bold flex items-center gap-1 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-md w-fit">
+                          <span>✓</span> Admin Cross-Checked & Approved
+                        </span>
+                        <span className="text-xs font-display font-bold text-slate-800 truncate max-w-[180px]" title={row.siteName || 'Field Duty'}>
+                          {row.siteName || 'Field Duty'}
+                        </span>
+                        <span className="text-[11px] font-display font-medium text-slate-600">
+                          {row.locationAddress || 'Coordinates Verified'} {row.distanceMeters ? `(~${row.distanceMeters}m)` : ''}
+                        </span>
+                        {row.latitude && row.longitude && (
+                          <a
+                            href={`https://www.google.com/maps/search/?api=1&query=${row.latitude},${row.longitude}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[10px] text-navy font-display font-bold hover:underline flex items-center gap-1 mt-0.5"
+                            title="View coordinates on Google Maps"
+                          >
+                            <span>🗺️</span>
+                            <span>View on Google Maps</span>
+                          </a>
+                        )}
+                      </div>
+                    ) : row.dutyType === 'Field Site' ? (
                       <div className="flex flex-col gap-0.5">
                         <span className="text-amber-800 text-[10px] font-display font-bold flex items-center gap-1 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md w-fit">
                           <span>🚧</span> Field Site Duty
@@ -376,7 +461,18 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
                     </div>
                   </td>
                   <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {row.isFlagged && !row.verifiedByAdmin && row.id && (
+                        <button
+                          type="button"
+                          onClick={() => handleApproveRecord(row.id!)}
+                          className="text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-[10px] font-display font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
+                          title="Approve field timestamp after cross-checking location"
+                        >
+                          <span>✓</span>
+                          <span>Approve</span>
+                        </button>
+                      )}
                       <button 
                         onClick={() => setEditingRow(row)}
                         className="text-navy text-[11px] font-display font-bold px-2.5 py-1 rounded-lg hover:bg-navy-50 transition-colors border border-navy/20 cursor-pointer"
