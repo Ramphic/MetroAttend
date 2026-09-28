@@ -14,7 +14,8 @@ import {
   calculateDistanceMeters,
   getLocalDateString,
   resetTodayAttendance,
-  DEFAULT_WORKPLACE 
+  DEFAULT_WORKPLACE,
+  formatNotificationTime
 } from '../lib/firebase';
 
 export default function Dashboard({ nav }: { nav: NavProps }) {
@@ -108,7 +109,7 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
         title: 'Absence Notice Recorded',
         body: `You reported absence for today. Reason: ${absenceReason}${absenceNote ? ` (${absenceNote})` : ''}.`,
         type: 'warning',
-        time: 'Just now',
+        time: formatNotificationTime(Date.now()),
         timestamp: Date.now(),
         unread: true,
         targetUserId: uid,
@@ -135,7 +136,7 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
         title: 'Absence Notice Retracted',
         body: 'Your absence notice for today has been cancelled. You can now verify GPS location and clock in.',
         type: 'info',
-        time: 'Just now',
+        time: formatNotificationTime(Date.now()),
         timestamp: Date.now(),
         unread: true,
         targetUserId: uid,
@@ -194,7 +195,7 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
         ? `You logged your check-out at ${timeStr}. GPS verified on-site (~${dist ?? 20}m).`
         : `You logged your check-out at ${timeStr}. Today's work session is complete.`,
       type: 'info',
-      time: `${timeStr} today`,
+      time: formatNotificationTime(Date.now()),
       timestamp: Date.now(),
       unread: true,
       targetUserId: uid,
@@ -211,7 +212,7 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
       title: 'Check-Out Cancelled · Shift Resumed',
       body: 'Your previous check-out has been cancelled. You are currently clocked in and can record your departure when you leave.',
       type: 'info',
-      time: 'Just now',
+      time: formatNotificationTime(Date.now()),
       timestamp: Date.now(),
       unread: true,
       targetUserId: uid,
@@ -309,7 +310,7 @@ export default function Dashboard({ nav }: { nav: NavProps }) {
                 <span className="text-[10px] font-mono uppercase font-bold text-navy bg-white px-2 py-0.5 rounded-md border border-blue-100">
                   Bulletin
                 </span>
-                <span className="text-[10px] font-mono text-slate-400">{latestAnnouncement.time}</span>
+                <span className="text-[10px] font-mono text-slate-400">{formatNotificationTime(latestAnnouncement.timestamp, latestAnnouncement.time)}</span>
               </div>
               <h4 className="text-xs font-display font-bold text-slate-900 mt-0.5">{latestAnnouncement.title}</h4>
               <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">{latestAnnouncement.body}</p>

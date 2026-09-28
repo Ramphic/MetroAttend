@@ -8,6 +8,7 @@ import {
   getNotifications,
   sendBroadcastAnnouncement,
   deleteNotification,
+  formatNotificationTime,
   DESIGNATED_ADMIN_EMAIL,
   saveStoredCredential
 } from '../../lib/firebase';
@@ -131,7 +132,7 @@ export default function Settings({ nav }: { nav: NavProps }) {
   };
 
   const handleDeleteBroadcast = async (id: string) => {
-    await deleteNotification(id);
+    await deleteNotification(id, undefined, true);
     await loadBroadcasts();
     showSavedFeedback('Bulletin deleted.');
   };
@@ -486,7 +487,7 @@ export default function Settings({ nav }: { nav: NavProps }) {
                             }`}>
                               {b.type}
                             </span>
-                            <span className="text-[10px] font-mono text-muted">{b.time}</span>
+                            <span className="text-[10px] font-mono text-muted">{formatNotificationTime(b.timestamp, b.time)}</span>
                           </div>
                           <h4 className="text-xs font-display font-bold text-slate-800">{b.title}</h4>
                           <p className="text-xs text-slate-600 leading-relaxed">{b.body}</p>

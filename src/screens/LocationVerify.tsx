@@ -8,7 +8,8 @@ import {
   recordCheckIn, 
   addNotification, 
   getLocalDateString,
-  DEFAULT_WORKPLACE 
+  DEFAULT_WORKPLACE,
+  formatNotificationTime
 } from '../lib/firebase';
 import { reverseGeocode, getNearestLandmark, getClosestTownName } from '../lib/geo';
 
@@ -239,7 +240,7 @@ export default function LocationVerify({ nav }: { nav: NavProps }) {
           ? `Timestamp logged at ${timeStr}. Flagged for supervisor review (${flagReason}).`
           : `Presence verified at ${finalSiteName} at ${timeStr}.`,
         type: isFlagged ? 'warning' : 'success',
-        time: `${timeStr} today`,
+        time: formatNotificationTime(Date.now()),
         timestamp: Date.now(),
         unread: true,
         targetUserId: user?.uid || profile?.id || 'emp_1',

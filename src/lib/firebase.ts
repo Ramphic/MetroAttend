@@ -808,36 +808,92 @@ export async function saveWorkplaceSettings(settings: WorkplaceSettings): Promis
 
 const LOCAL_NOTIFICATIONS_KEY = 'metroattend_notifications';
 
+/**
+ * Accurately format a notification timestamp into relative or calendar time.
+ * Completely eliminates false "X today" static strings when viewed on subsequent days.
+ */
+export function formatNotificationTime(timestamp?: number, fallbackStr?: string): string {
+  if (timestamp && typeof timestamp === 'number' && !isNaN(timestamp) && timestamp > 0) {
+    const notifDate = new Date(timestamp);
+    const now = new Date();
+
+    const timeFormatted = notifDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+
+    // Compare date boundaries in local time
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const tomorrowStart = todayStart + 24 * 60 * 60 * 1000;
+    const yesterdayStart = todayStart - 24 * 60 * 60 * 1000;
+
+    const notifTime = notifDate.getTime();
+
+    if (notifTime >= todayStart && notifTime < tomorrowStart) {
+      const diffSec = Math.floor((now.getTime() - notifTime) / 1000);
+      if (diffSec < 60 && diffSec >= -5) return 'Just now';
+      if (diffSec < 3600 && diffSec >= 60) return `${Math.floor(diffSec / 60)}m ago`;
+      return `Today at ${timeFormatted}`;
+    } else if (notifTime >= yesterdayStart && notifTime < todayStart) {
+      return `Yesterday at ${timeFormatted}`;
+    } else {
+      const daysDiff = Math.floor((todayStart - notifTime) / (24 * 60 * 60 * 1000));
+      if (daysDiff < 7 && daysDiff > 0) {
+        const weekday = notifDate.toLocaleDateString('en-GB', { weekday: 'short' });
+        return `${weekday} at ${timeFormatted}`;
+      } else {
+        const dateStr = notifDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+        return `${dateStr} at ${timeFormatted}`;
+      }
+    }
+  }
+
+  if (fallbackStr && typeof fallbackStr === 'string') {
+    return fallbackStr.replace(/\s+today$/i, '');
+  }
+
+  return 'Recently';
+}
+
 const initialNotifications: SystemNotification[] = [
   {
-    id: 'notif_1',
-    title: 'Workplace Attendance Logged',
-    body: 'Your morning GPS location was verified and check-in was successfully recorded.',
-    time: '8:03 AM today',
-    timestamp: Date.now() - 1000 * 60 * 60 * 2,
-    unread: true,
-    type: 'success',
-  },
-  {
-    id: 'notif_2',
-    title: 'Attendance Policy Reminder',
-    body: 'Please ensure you log your end-of-day check-out before leaving the facility.',
-    time: 'Yesterday',
+    id: 'notif_welcome',
+    title: 'Department Attendance System Active',
+    body: 'Digital workforce logging & site geofencing is now live. Verify your GPS location to clock in on duty.',
+    time: 'Recent',
     timestamp: Date.now() - 1000 * 60 * 60 * 24,
-    unread: true,
-    type: 'warning',
-  },
-  {
-    id: 'notif_3',
-    title: 'MetroWorks System Notice',
-    body: 'Workplace geofence perimeter coordinates updated to Main Facility.',
-    time: '3 days ago',
-    timestamp: Date.now() - 1000 * 60 * 60 * 72,
     unread: false,
     type: 'info',
     broadcast: true,
   },
+  {
+    id: 'notif_policy',
+    title: 'Workplace Attendance Policy',
+    body: 'Standard working hours are 08:00 to 17:00. Ensure you record your check-in and departure check-out daily.',
+    time: 'Recent',
+    timestamp: Date.now() - 1000 * 60 * 60 * 48,
+    unread: false,
+    type: 'warning',
+    broadcast: true,
+  },
 ];
+
+function getDismissedIds(userId?: string): string[] {
+  if (!userId) return [];
+  try {
+    const raw = localStorage.getItem(`metroattend_dismissed_${userId}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function getReadIds(userId?: string): string[] {
+  if (!userId) return [];
+  try {
+    const raw = localStorage.getItem(`metroattend_read_${userId}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
 
 function getLocalNotifications(): SystemNotification[] {
   try {
@@ -846,7 +902,10 @@ function getLocalNotifications(): SystemNotification[] {
       localStorage.setItem(LOCAL_NOTIFICATIONS_KEY, JSON.stringify(initialNotifications));
       return initialNotifications;
     }
-    return JSON.parse(raw);
+    const list: SystemNotification[] = JSON.parse(raw);
+    // Sanitize legacy demo notifications that had hardcoded "8:03 AM today"
+    const cleaned = list.filter(n => n.id !== 'notif_1' && n.id !== 'notif_2' && n.id !== 'notif_3');
+    return cleaned.length > 0 ? cleaned : initialNotifications;
   } catch {
     return initialNotifications;
   }
@@ -857,15 +916,29 @@ function saveLocalNotifications(list: SystemNotification[]) {
 }
 
 export async function getNotifications(userId?: string): Promise<SystemNotification[]> {
+  const dismissed = getDismissedIds(userId);
+  const readIds = getReadIds(userId);
+
   if (db) {
     try {
       const q = collection(db, 'notifications');
       const snap = await getDocs(q);
       if (!snap.empty) {
-        const items = snap.docs.map(d => ({ ...d.data(), id: d.id } as SystemNotification));
+        const items = snap.docs.map(d => {
+          const data = d.data() as SystemNotification;
+          const ts = typeof data.timestamp === 'number' ? data.timestamp : Date.now();
+          const isRead = data.unread === false || readIds.includes(d.id);
+          return {
+            ...data,
+            id: d.id,
+            timestamp: ts,
+            time: formatNotificationTime(ts, data.time),
+            unread: !isRead,
+          } as SystemNotification;
+        });
         return items
-          .filter(n => n.broadcast || !n.targetUserId || n.targetUserId === userId)
-          .sort((a, b) => b.timestamp - a.timestamp);
+          .filter(n => !dismissed.includes(n.id) && (n.broadcast || !n.targetUserId || n.targetUserId === userId))
+          .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
       }
     } catch (e) {
       console.warn('Error fetching notifications from Firestore:', e);
@@ -874,30 +947,68 @@ export async function getNotifications(userId?: string): Promise<SystemNotificat
 
   const local = getLocalNotifications();
   return local
-    .filter(n => n.broadcast || !n.targetUserId || n.targetUserId === userId)
-    .sort((a, b) => b.timestamp - a.timestamp);
+    .map(n => ({
+      ...n,
+      time: formatNotificationTime(n.timestamp, n.time),
+      unread: readIds.includes(n.id) ? false : n.unread,
+    }))
+    .filter(n => !dismissed.includes(n.id) && (n.broadcast || !n.targetUserId || n.targetUserId === userId))
+    .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 }
 
 export function subscribeNotifications(
   userId: string | undefined, 
   callback: (notifs: SystemNotification[]) => void
 ): () => void {
+  const dismissed = getDismissedIds(userId);
+  const readIds = getReadIds(userId);
+
   if (db) {
     try {
       const q = collection(db, 'notifications');
       const unsubscribe = onSnapshot(q, (snap) => {
-        const items = snap.docs.map(d => ({ ...d.data(), id: d.id } as SystemNotification));
+        const items = snap.docs.map(d => {
+          const data = d.data() as SystemNotification;
+          const ts = typeof data.timestamp === 'number' ? data.timestamp : Date.now();
+          const isRead = data.unread === false || readIds.includes(d.id);
+          return {
+            ...data,
+            id: d.id,
+            timestamp: ts,
+            time: formatNotificationTime(ts, data.time),
+            unread: !isRead,
+          } as SystemNotification;
+        });
+
         if (items.length > 0) {
           const filtered = items
-            .filter(n => n.broadcast || !n.targetUserId || n.targetUserId === userId)
-            .sort((a, b) => b.timestamp - a.timestamp);
+            .filter(n => !dismissed.includes(n.id) && (n.broadcast || !n.targetUserId || n.targetUserId === userId))
+            .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
           callback(filtered);
         } else {
-          callback(getLocalNotifications());
+          callback(
+            getLocalNotifications()
+              .map(n => ({
+                ...n,
+                time: formatNotificationTime(n.timestamp, n.time),
+                unread: readIds.includes(n.id) ? false : n.unread,
+              }))
+              .filter(n => !dismissed.includes(n.id) && (n.broadcast || !n.targetUserId || n.targetUserId === userId))
+              .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+          );
         }
       }, (err) => {
         console.warn('Firestore notifications listener error:', err);
-        callback(getLocalNotifications());
+        callback(
+          getLocalNotifications()
+            .map(n => ({
+              ...n,
+              time: formatNotificationTime(n.timestamp, n.time),
+              unread: readIds.includes(n.id) ? false : n.unread,
+            }))
+            .filter(n => !dismissed.includes(n.id) && (n.broadcast || !n.targetUserId || n.targetUserId === userId))
+            .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+        );
       });
       return unsubscribe;
     } catch (e) {
@@ -905,15 +1016,30 @@ export function subscribeNotifications(
     }
   }
 
-  callback(getLocalNotifications());
+  callback(
+    getLocalNotifications()
+      .map(n => ({
+        ...n,
+        time: formatNotificationTime(n.timestamp, n.time),
+        unread: readIds.includes(n.id) ? false : n.unread,
+      }))
+      .filter(n => !dismissed.includes(n.id) && (n.broadcast || !n.targetUserId || n.targetUserId === userId))
+      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+  );
   return () => {};
 }
 
 export async function addNotification(
   notif: Omit<SystemNotification, 'id'>
 ): Promise<string> {
-  const newId = `notif_${Date.now()}`;
-  const fullNotif: SystemNotification = { ...notif, id: newId };
+  const newId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+  const timestamp = notif.timestamp || Date.now();
+  const fullNotif: SystemNotification = { 
+    ...notif, 
+    id: newId,
+    timestamp,
+    time: formatNotificationTime(timestamp),
+  };
 
   if (db) {
     try {
@@ -935,20 +1061,31 @@ export async function sendBroadcastAnnouncement(
   body: string, 
   type: 'info' | 'warning' | 'success' = 'info'
 ): Promise<void> {
-  const now = new Date();
-  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' today';
+  const now = Date.now();
   await addNotification({
     title,
     body,
     type,
-    time: timeStr,
-    timestamp: Date.now(),
+    time: formatNotificationTime(now),
+    timestamp: now,
     unread: true,
     broadcast: true,
   });
 }
 
-export async function markNotificationAsRead(id: string): Promise<void> {
+export async function markNotificationAsRead(id: string, userId?: string): Promise<void> {
+  if (userId) {
+    try {
+      const readKey = `metroattend_read_${userId}`;
+      const raw = localStorage.getItem(readKey);
+      const readIds: string[] = raw ? JSON.parse(raw) : [];
+      if (!readIds.includes(id)) {
+        readIds.push(id);
+        localStorage.setItem(readKey, JSON.stringify(readIds));
+      }
+    } catch {}
+  }
+
   if (db) {
     try {
       const ref = doc(db, 'notifications', id);
@@ -968,6 +1105,27 @@ export async function markNotificationAsRead(id: string): Promise<void> {
 
 export async function markAllNotificationsAsRead(userId?: string): Promise<void> {
   const local = getLocalNotifications();
+
+  if (userId) {
+    try {
+      const readKey = `metroattend_read_${userId}`;
+      const allIds = local.map(n => n.id);
+      localStorage.setItem(readKey, JSON.stringify(allIds));
+    } catch {}
+  }
+
+  if (db && userId) {
+    try {
+      const q = query(collection(db, 'notifications'), where('targetUserId', '==', userId));
+      const snap = await getDocs(q);
+      for (const d of snap.docs) {
+        await updateDoc(d.ref, { unread: false });
+      }
+    } catch (e) {
+      console.warn('Error marking all notifications as read in Firestore:', e);
+    }
+  }
+
   local.forEach(n => {
     if (n.broadcast || !n.targetUserId || n.targetUserId === userId) {
       n.unread = false;
@@ -976,13 +1134,27 @@ export async function markAllNotificationsAsRead(userId?: string): Promise<void>
   saveLocalNotifications(local);
 }
 
-export async function deleteNotification(id: string): Promise<void> {
-  if (db) {
+export async function deleteNotification(id: string, userId?: string, isAdminAction = false): Promise<void> {
+  // If administrator deletes from Settings, remove completely from Firestore
+  if (db && isAdminAction) {
     try {
       await deleteDoc(doc(db, 'notifications', id));
     } catch (e) {
       console.warn('Error deleting notification from Firestore:', e);
     }
+  }
+
+  // If a regular user dismisses from their mobile device, track locally so it doesn't delete for others
+  if (userId && !isAdminAction) {
+    try {
+      const dismissKey = `metroattend_dismissed_${userId}`;
+      const raw = localStorage.getItem(dismissKey);
+      const dismissed: string[] = raw ? JSON.parse(raw) : [];
+      if (!dismissed.includes(id)) {
+        dismissed.push(id);
+        localStorage.setItem(dismissKey, JSON.stringify(dismissed));
+      }
+    } catch {}
   }
 
   const local = getLocalNotifications();

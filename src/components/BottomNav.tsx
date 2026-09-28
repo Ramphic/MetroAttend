@@ -4,6 +4,7 @@ import { NavProps, Screen } from '../types';
 interface Props {
   nav: NavProps;
   currentTab: 'home' | 'attendance' | 'profile' | 'notifications';
+  unreadCount?: number;
 }
 
 const HomeIcon = ({ active }: { active: boolean }) => (
@@ -22,11 +23,18 @@ const CalendarIcon = ({ active }: { active: boolean }) => (
   </svg>
 );
 
-const BellIcon = ({ active }: { active: boolean }) => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#1B3A6B' : '#94A3B8'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-    <path d="M13.73 21a2 2 0 01-3.46 0"/>
-  </svg>
+const BellIcon = ({ active, count }: { active: boolean; count?: number }) => (
+  <div className="relative">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#1B3A6B' : '#94A3B8'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+      <path d="M13.73 21a2 2 0 01-3.46 0"/>
+    </svg>
+    {count && count > 0 ? (
+      <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-mono font-bold flex items-center justify-center border-2 border-white animate-pulse">
+        {count > 9 ? '9+' : count}
+      </span>
+    ) : null}
+  </div>
 );
 
 const UserIcon = ({ active }: { active: boolean }) => (
@@ -36,11 +44,11 @@ const UserIcon = ({ active }: { active: boolean }) => (
   </svg>
 );
 
-export default function BottomNav({ nav, currentTab }: Props) {
+export default function BottomNav({ nav, currentTab, unreadCount }: Props) {
   const items: { key: typeof currentTab; label: string; screen: Screen; icon: (active: boolean) => React.ReactNode }[] = [
     { key: 'home', label: 'Home', screen: 'dashboard', icon: (a) => <HomeIcon active={a} /> },
     { key: 'attendance', label: 'Attendance', screen: 'attendance-history', icon: (a) => <CalendarIcon active={a} /> },
-    { key: 'notifications', label: 'Alerts', screen: 'notifications', icon: (a) => <BellIcon active={a} /> },
+    { key: 'notifications', label: 'Alerts', screen: 'notifications', icon: (a) => <BellIcon active={a} count={unreadCount} /> },
     { key: 'profile', label: 'Profile', screen: 'emp-profile', icon: (a) => <UserIcon active={a} /> },
   ];
 

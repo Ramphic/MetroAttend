@@ -9,7 +9,8 @@ import {
   toggleEmployeeStatus, 
   deleteEmployee, 
   exportRecordsToCSV, 
-  addNotification 
+  addNotification,
+  formatNotificationTime
 } from '../../lib/firebase';
 
 export default function StaffProfile({ nav }: { nav: NavProps }) {
@@ -120,8 +121,8 @@ export default function StaffProfile({ nav }: { nav: NavProps }) {
     e.preventDefault();
     if (!emp || !alertTitle.trim() || !alertBody.trim()) return;
     setSendingAlert(true);
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' today';
+    const now = Date.now();
+    const timeStr = formatNotificationTime(now);
     const targetId = emp.id || emp.uid || '';
     await addNotification({
       title: alertTitle,

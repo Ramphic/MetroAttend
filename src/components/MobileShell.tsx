@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavProps } from '../types';
 import BottomNav from './BottomNav';
 import { useAuth } from '../context/AuthContext';
+import { subscribeNotifications } from '../lib/firebase';
 import Logo from './Logo';
 
 interface Props {
@@ -15,6 +16,16 @@ interface Props {
 
 export default function MobileShell({ children, nav, showBottomNav = true, currentTab = 'home' }: Props) {
   const { isAdmin, profile, user, logout } = useAuth();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const currentUid = user?.uid || profile?.id || profile?.uid || 'emp_1';
+
+  useEffect(() => {
+    const unsubscribe = subscribeNotifications(currentUid, (list) => {
+      setUnreadCount(list.filter(n => n.unread).length);
+    });
+    return () => unsubscribe();
+  }, [currentUid]);
 
   const handleLogout = async () => {
     await logout();
@@ -83,18 +94,38 @@ export default function MobileShell({ children, nav, showBottomNav = true, curre
             </button>
             <button 
               onClick={() => nav.navigate('notifications')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-display font-700 transition-all ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-display font-700 transition-all flex items-center gap-1.5 cursor-pointer ${
                 currentTab === 'notifications' 
                   ? 'bg-white/20 text-white shadow-xs' 
                   : 'text-white/70 hover:text-white hover:bg-white/10'
               }`}
             >
-              Alerts
+              <span>Alerts</span>
+              {unreadCount > 0 && (
+                <span className="min-w-[18px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-mono font-bold flex items-center justify-center animate-pulse">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
             </button>
           </nav>
 
           {/* User actions / Admin shortcut */}
           <div className="flex items-center gap-3">
+            {/* Mobile quick alerts bell */}
+            <button
+              onClick={() => nav.navigate('notifications')}
+              className="relative p-2 text-white/80 hover:text-white transition-colors cursor-pointer md:hidden"
+              title="Alerts & Bulletins"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 01-3.46 0"/>
+              </svg>
+              {unreadCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-navy animate-pulse" />
+              )}
+            </button>
+
             {/* Admin Console shortcut - only rendered if authorized */}
             {isAdmin && (
               <button
@@ -149,7 +180,7 @@ export default function MobileShell({ children, nav, showBottomNav = true, curre
       {/* Mobile Bottom Navigation Bar (Phone viewports only) */}
       {showBottomNav && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-border shadow-lg">
-          <BottomNav nav={nav} currentTab={currentTab} />
+          <BottomNav nav={nav} currentTab={currentTab} unreadCount={unreadCount} />
         </div>
       )}
     </div>
