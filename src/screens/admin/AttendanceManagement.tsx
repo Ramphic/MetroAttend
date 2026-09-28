@@ -21,11 +21,14 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
   const [onlyFlaggedDevices, setOnlyFlaggedDevices] = useState(false);
   const [onlyFieldSites, setOnlyFieldSites] = useState(false);
   const [onlyPendingCrossCheck, setOnlyPendingCrossCheck] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(() => getLocalDateString());
+  const [selectedDate, setSelectedDate] = useState<string>(''); // '' means All Historical Dates
   const [editingRow, setEditingRow] = useState<AttendanceRecord | null>(null);
   const [savingStatus, setSavingStatus] = useState(false);
   const [resettingAll, setResettingAll] = useState(false);
   const [resetMsg, setResetMsg] = useState<string | null>(null);
+
+  const todayStr = getLocalDateString();
+  const todayFormatted = new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 
   useEffect(() => {
     loadRecords();
@@ -37,12 +40,14 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
   };
 
   const statuses: (AttendanceStatus | 'All')[] = ['All', 'Present', 'Late', 'Absent'];
-  const depts = ['All', 'Engineering', 'Administration', 'Finance', 'IT', 'HR', 'Legal', 'Operations'];
+  const depts = ['All', 'Engineering', 'Administration', 'Finance', 'Information Technology', 'Human Resources', 'Legal Affairs', 'Operations', 'Quantity Surveying'];
 
   const filtered = records.filter(row => {
     const matchStatus = statusFilter === 'All' || row.status === statusFilter;
     const matchDept = deptFilter === 'All' || (row.department || 'Operations') === deptFilter;
-    const matchDate = !selectedDate || row.date === selectedDate;
+    const matchDate = !selectedDate || 
+      row.date === selectedDate || 
+      (row.timestamp && getLocalDateString(new Date(row.timestamp)) === selectedDate);
     const matchFlagged = !onlyFlaggedDevices || Boolean(row.isSharedDevice);
     const matchFieldSite = !onlyFieldSites || row.dutyType === 'Field Site';
     const matchPendingCrossCheck = !onlyPendingCrossCheck || (Boolean(row.isFlagged) && !row.verifiedByAdmin);
@@ -54,8 +59,9 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
   const absentCount = filtered.filter(r => r.status === 'Absent').length;
   const locationVerifiedCount = filtered.filter(r => r.locationVerified).length;
   const sharedDeviceCount = records.filter(r => r.isSharedDevice).length;
-  const fieldSiteCount = records.filter(r => r.dutyType === 'Field Site').length;
-  const pendingCrossCheckCount = records.filter(r => r.isFlagged && !r.verifiedByAdmin).length;
+  const fieldSiteCount = filtered.filter(r => r.dutyType === 'Field Site').length;
+  const pendingCrossCheckCount = filtered.filter(r => r.isFlagged && !r.verifiedByAdmin).length;
+  const todayCount = records.filter(r => r.date === todayStr).length;
 
   const handleApproveRecord = async (recordId: string) => {
     try {
@@ -118,7 +124,11 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-display font-800 text-slate-900">Attendance Roster Management</h1>
-          <p className="text-muted text-sm mt-0.5">Real-time attendance logs, status overrides, and verification</p>
+          <p className="text-muted text-sm mt-0.5">
+            {selectedDate 
+              ? (selectedDate === todayStr ? `Showing: Today · ${todayFormatted}` : `Showing: Date · ${selectedDate}`)
+              : 'Showing: All Historical Dates'} · <strong className="text-slate-700">{filtered.length}</strong> of {records.length} total logs
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <button 
@@ -132,11 +142,11 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
             <span>{resettingAll ? 'Resetting…' : "Reset Today's Records (Test)"}</span>
           </button>
           <button 
-            onClick={() => exportRecordsToCSV(filtered, `attendance_${selectedDate}.csv`)}
+            onClick={() => exportRecordsToCSV(filtered, `attendance_${selectedDate || 'all_records'}.csv`)}
             className="flex items-center gap-2 bg-navy text-white px-4 py-2.5 rounded-xl font-display font-semibold text-xs hover:bg-navy-dark transition-all shadow-xs cursor-pointer"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Export CSV Report
+            Export CSV Report ({filtered.length})
           </button>
         </div>
       </div>
@@ -153,22 +163,50 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
 
       {/* Date & Filter Toolbar */}
       <div className="bg-white rounded-2xl border border-border p-4 mb-5 shadow-xs">
-        <div className="flex flex-wrap items-center gap-4">
-          {/* Date selector */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Quick View Mode Switcher */}
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setSelectedDate('')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-display font-bold transition-all cursor-pointer ${
+                selectedDate === ''
+                  ? 'bg-white text-navy shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              All Records ({records.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedDate(todayStr)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-display font-bold transition-all cursor-pointer ${
+                selectedDate === todayStr
+                  ? 'bg-navy text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Today ({todayCount})
+            </button>
+          </div>
+
+          {/* Custom Date selector */}
           <div className="flex items-center gap-2">
-            <span className="text-xs font-display font-bold text-slate-600">Date:</span>
+            <span className="text-xs font-display font-bold text-slate-500">Pick Date:</span>
             <input
               type="date"
               value={selectedDate}
               onChange={e => setSelectedDate(e.target.value)}
               className="bg-surface border border-border rounded-xl px-3 py-1.5 text-xs font-mono text-slate-700 focus:outline-none focus:ring-2 focus:ring-navy/20"
             />
-            {selectedDate !== new Date().toISOString().split('T')[0] && (
+            {selectedDate && (
               <button
-                onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
-                className="text-[11px] font-display font-semibold text-navy hover:underline"
+                type="button"
+                onClick={() => setSelectedDate('')}
+                className="text-[11px] font-display font-bold text-slate-500 hover:text-red-600 px-2 py-1 rounded-lg bg-surface border border-border cursor-pointer transition-colors"
+                title="Clear date filter to view all records"
               >
-                Today
+                ✕ Clear
               </button>
             )}
           </div>
@@ -179,7 +217,7 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
               <button
                 key={s}
                 onClick={() => setStatusFilter(s)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-display font-bold transition-all ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-display font-bold transition-all cursor-pointer ${
                   statusFilter === s
                     ? s === 'All' ? 'bg-navy text-white shadow-xs' :
                       s === 'Present' ? 'bg-success text-white shadow-xs' :
@@ -193,10 +231,9 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
             ))}
 
             {/* Anti-Proxy / Shared Device filter toggle */}
-            {/* Anti-Proxy / Shared Device filter toggle */}
             <button
               onClick={() => setOnlyFlaggedDevices(prev => !prev)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-display font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-display font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                 onlyFlaggedDevices
                   ? 'bg-amber-500 text-white shadow-xs'
                   : 'bg-surface text-amber-800 border border-amber-300 hover:bg-amber-50'
@@ -254,7 +291,7 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
             <select
               value={deptFilter}
               onChange={e => setDeptFilter(e.target.value)}
-              className="bg-surface border border-border rounded-xl px-3 py-1.5 text-xs font-display font-600 text-slate-700 focus:outline-none focus:ring-2 focus:ring-navy/20"
+              className="bg-surface border border-border rounded-xl px-3 py-1.5 text-xs font-display font-600 text-slate-700 focus:outline-none focus:ring-2 focus:ring-navy/20 cursor-pointer"
             >
               {depts.map(d => <option key={d}>{d}</option>)}
             </select>
@@ -265,16 +302,24 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
       {/* Real Dynamic Summary strip */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
         {[
-          { label: 'Present Today', val: presentCount, color: 'text-success', bg: 'bg-success-bg' },
-          { label: 'Late Arrivals', val: lateCount, color: 'text-late', bg: 'bg-late-bg' },
-          { label: 'Recorded Absent', val: absentCount, color: 'text-danger', bg: 'bg-danger-bg' },
-          { label: 'Road Site Duty', val: fieldSiteCount, color: 'text-amber-800', bg: 'bg-amber-50' },
-          { label: 'Pending Cross-Check', val: pendingCrossCheckCount, color: pendingCrossCheckCount > 0 ? 'text-amber-900 font-bold' : 'text-slate-600', bg: pendingCrossCheckCount > 0 ? 'bg-amber-100 border-amber-300 border-2' : 'bg-slate-50' },
-          { label: 'GPS Verified', val: locationVerifiedCount, color: 'text-navy', bg: 'bg-navy-50' },
+          { label: selectedDate === todayStr ? 'Present Today' : 'Total Present', val: presentCount, color: 'text-success', bg: 'bg-success-bg', active: statusFilter === 'Present', onClick: () => setStatusFilter(statusFilter === 'Present' ? 'All' : 'Present') },
+          { label: 'Late Arrivals', val: lateCount, color: 'text-late', bg: 'bg-late-bg', active: statusFilter === 'Late', onClick: () => setStatusFilter(statusFilter === 'Late' ? 'All' : 'Late') },
+          { label: 'Recorded Absent', val: absentCount, color: 'text-danger', bg: 'bg-danger-bg', active: statusFilter === 'Absent', onClick: () => setStatusFilter(statusFilter === 'Absent' ? 'All' : 'Absent') },
+          { label: 'Road Site Duty', val: fieldSiteCount, color: 'text-amber-800', bg: 'bg-amber-50', active: onlyFieldSites, onClick: () => setOnlyFieldSites(prev => !prev) },
+          { label: 'Pending Cross-Check', val: pendingCrossCheckCount, color: pendingCrossCheckCount > 0 ? 'text-amber-900 font-bold' : 'text-slate-600', bg: pendingCrossCheckCount > 0 ? 'bg-amber-100 border-amber-300 border-2' : 'bg-slate-50', active: onlyPendingCrossCheck, onClick: () => setOnlyPendingCrossCheck(prev => !prev) },
+          { label: 'GPS Verified', val: locationVerifiedCount, color: 'text-navy', bg: 'bg-navy-50', active: false, onClick: undefined },
         ].map(s => (
-          <div key={s.label} className={`${s.bg} rounded-2xl p-4 border border-slate-100 shadow-xs`}>
+          <div 
+            key={s.label} 
+            onClick={s.onClick}
+            className={`${s.bg} rounded-2xl p-4 border transition-all ${s.active ? 'ring-2 ring-navy/40 shadow-sm' : 'border-slate-100 shadow-xs'} ${s.onClick ? 'cursor-pointer hover:opacity-90' : ''}`}
+            title={s.onClick ? 'Click to toggle filter' : undefined}
+          >
             <div className={`text-2xl font-display font-800 ${s.color}`}>{s.val}</div>
-            <div className={`text-xs font-display font-600 ${s.color} mt-0.5 opacity-80`}>{s.label}</div>
+            <div className={`text-xs font-display font-600 ${s.color} mt-0.5 opacity-80 flex items-center justify-between`}>
+              <span>{s.label}</span>
+              {s.active && <span className="text-[10px]">●</span>}
+            </div>
           </div>
         ))}
       </div>
@@ -285,7 +330,7 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
           <table className="w-full">
             <thead>
               <tr className="border-b border-slate-100 bg-surface">
-                {['Staff Member', 'Category', 'Check-in', 'Check-out', 'Location Verification', 'Device & Security', 'Status', 'Actions'].map(h => (
+                {['Staff Member', 'Date', 'Category', 'Check-in', 'Check-out', 'Location Verification', 'Device & Security', 'Status', 'Actions'].map(h => (
                   <th key={h} className="text-left text-[10px] font-display font-700 text-slate-400 uppercase tracking-wide px-5 py-3.5">{h}</th>
                 ))}
               </tr>
@@ -316,6 +361,10 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
                         <div className="text-[10px] font-mono text-muted">{row.department || 'Operations'}</div>
                       </div>
                     </div>
+                  </td>
+                  <td className="px-5 py-3.5 whitespace-nowrap">
+                    <div className="text-xs font-mono font-bold text-slate-800">{row.dayLabel || row.date}</div>
+                    <div className="text-[10px] font-mono text-muted">{row.date}</div>
                   </td>
                   <td className="px-5 py-3.5">
                     <span className={`text-[10px] font-display font-600 px-2 py-0.5 rounded-full ${getCategoryColor(row.category || 'Permanent Staff')}`}>
@@ -506,8 +555,44 @@ export default function AttendanceManagement({ nav }: { nav: NavProps }) {
 
         {filtered.length === 0 && (
           <div className="py-16 text-center">
-            <div className="text-muted text-sm font-display font-semibold">No attendance records found</div>
-            <div className="text-slate-400 text-xs font-mono mt-1">Try choosing another date or adjusting status filters</div>
+            <div className="w-12 h-12 rounded-2xl bg-surface border border-border flex items-center justify-center mx-auto mb-3 text-2xl">
+              📋
+            </div>
+            <div className="text-slate-800 text-sm font-display font-bold">
+              No attendance records found
+            </div>
+            <p className="text-slate-500 text-xs mt-1 max-w-sm mx-auto">
+              {selectedDate === todayStr 
+                ? "No staff have clocked in yet today, or today's logs were reset for testing."
+                : selectedDate 
+                  ? `No logs found for ${selectedDate}.`
+                  : "No logs matched your selected filter criteria."}
+            </p>
+            <div className="mt-4 flex items-center justify-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedDate('');
+                  setStatusFilter('All');
+                  setDeptFilter('All');
+                  setOnlyFlaggedDevices(false);
+                  setOnlyFieldSites(false);
+                  setOnlyPendingCrossCheck(false);
+                }}
+                className="px-4 py-2 bg-navy hover:bg-navy-dark text-white rounded-xl text-xs font-display font-bold transition-all shadow-xs cursor-pointer"
+              >
+                View All Records ({records.length}) →
+              </button>
+              {selectedDate !== todayStr && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedDate(todayStr)}
+                  className="px-4 py-2 bg-surface hover:bg-slate-100 border border-border text-slate-700 rounded-xl text-xs font-display font-semibold cursor-pointer"
+                >
+                  View Today
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>

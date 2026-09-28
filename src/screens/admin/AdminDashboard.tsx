@@ -82,40 +82,43 @@ export default function AdminDashboard({ nav }: { nav: NavProps }) {
     };
   });
 
-  // Dynamic Weekly Velocity Calculation (Monday - Friday of current week)
+  // Dynamic Weekly Velocity Calculation (Rolling 5 most recent active working days)
   const weeklyTrendData = React.useMemo(() => {
     const now = new Date();
-    const currentDayOfWeek = now.getDay(); // 0 is Sun, 1 is Mon, 2 is Tue, 3 is Wed, 4 is Thu, 5 is Fri, 6 is Sat
-    const mondayOffset = currentDayOfWeek === 0 ? -6 : 1 - currentDayOfWeek;
-    const mondayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset);
+    const workDays: { label: string; dateStr: string; isToday: boolean }[] = [];
+    let cur = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    const weekDays = [0, 1, 2, 3, 4].map(offset => {
-      const d = new Date(mondayDate.getFullYear(), mondayDate.getMonth(), mondayDate.getDate() + offset);
-      const dateStr = getLocalDateString(d);
-      const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-      return {
-        label: `${dayNames[offset]} ${d.getDate()}`,
-        dateStr,
-        isToday: dateStr === getLocalDateString(now),
-      };
-    });
+    // Collect 5 active working days (skipping Sat and Sun)
+    while (workDays.length < 5) {
+      const dayOfWeek = cur.getDay(); // 0 is Sun, 6 is Sat
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+        const dStr = getLocalDateString(cur);
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        workDays.unshift({
+          label: `${dayNames[dayOfWeek]} ${cur.getDate()}`,
+          dateStr: dStr,
+          isToday: dStr === getLocalDateString(now),
+        });
+      }
+      cur = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() - 1);
+    }
 
     // Deduplicate records between historyRecords and live records by (user + date)
     const recordMap = new Map<string, AttendanceRecord>();
     for (const r of historyRecords) {
       if (!r.date) continue;
-      const key = `${r.userId || r.employeeId || r.id || 'usr'}_${r.date}`;
+      const key = `${r.userId || r.employeeId || r.name || 'usr'}_${r.date}`;
       recordMap.set(key, r);
     }
     for (const r of records) {
       if (!r.date) continue;
-      const key = `${r.userId || r.employeeId || r.id || 'usr'}_${r.date}`;
+      const key = `${r.userId || r.employeeId || r.name || 'usr'}_${r.date}`;
       recordMap.set(key, r);
     }
 
     const allDeduplicated = Array.from(recordMap.values());
 
-    return weekDays.map(day => {
+    return workDays.map(day => {
       const dayRecords = allDeduplicated.filter(r => r.date === day.dateStr);
       const p = dayRecords.filter(r => r.status === 'Present').length;
       const l = dayRecords.filter(r => r.status === 'Late').length;
@@ -139,11 +142,44 @@ export default function AdminDashboard({ nav }: { nav: NavProps }) {
     });
   }, [historyRecords, records, presentCount, lateCount, absentCount]);
 
+  const siteDutyCount = records.filter(r => r.dutyType === 'Field Site').length;
+
   const statCards = [
-    { label: 'Total Registered Staff', value: totalStaffCount, icon: '👥', color: 'bg-navy-50 text-navy', trend: 'Active roster' },
-    { label: 'Present Today', value: presentCount, icon: '✓', color: 'bg-success-bg text-success', trend: `${attendanceRate}% of workforce` },
-    { label: 'Late Arrivals', value: lateCount, icon: '⏱', color: 'bg-late-bg text-late', trend: 'Checked in past cutoff' },
-    { label: 'Recorded Absent', value: absentCount, icon: '✗', color: 'bg-danger-bg text-danger', trend: 'Unexcused / Leave' },
+    { 
+      label: 'Registered Workforce', 
+      value: totalStaffCount, 
+      icon: '👥', 
+      color: 'bg-navy-50 text-navy', 
+      trend: `${employees.filter(e => e.status === 'Active').length} Active Staff` 
+    },
+    { 
+      label: 'Present Today', 
+      value: presentCount, 
+      icon: '✓', 
+      color: 'bg-success-bg text-success', 
+      trend: `${attendanceRate}% workforce rate` 
+    },
+    { 
+      label: 'Road Site Duty', 
+      value: siteDutyCount, 
+      icon: '🚧', 
+      color: 'bg-amber-50 text-amber-800', 
+      trend: `${siteDutyCount} on field corridors` 
+    },
+    { 
+      label: 'Late Arrivals', 
+      value: lateCount, 
+      icon: '⏱', 
+      color: 'bg-late-bg text-late', 
+      trend: 'Checked in past cutoff' 
+    },
+    { 
+      label: 'Recorded Absent', 
+      value: absentCount, 
+      icon: '✗', 
+      color: 'bg-danger-bg text-danger', 
+      trend: absentCount > 0 ? 'Excuse on file' : 'Full roster active' 
+    },
   ];
 
   const handleSendBroadcast = async (e: React.FormEvent) => {
@@ -230,7 +266,7 @@ export default function AdminDashboard({ nav }: { nav: NavProps }) {
       )}
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3.5 mb-6">
         {statCards.map(card => (
           <div key={card.label} className="bg-white rounded-2xl p-5 border border-border shadow-sm">
             <div className="flex items-start justify-between mb-4">
@@ -252,7 +288,7 @@ export default function AdminDashboard({ nav }: { nav: NavProps }) {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-sm font-display font-700 text-slate-800">Weekly Attendance Velocity</h2>
-              <p className="text-muted text-xs font-mono mt-0.5">Monday – Friday work week attendance</p>
+              <p className="text-muted text-xs font-mono mt-0.5">5-day active workforce velocity</p>
             </div>
             <div className="flex gap-3 text-[10px] font-mono">
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-navy inline-block"/>Present</span>
@@ -279,34 +315,58 @@ export default function AdminDashboard({ nav }: { nav: NavProps }) {
         </div>
 
         {/* Real Dynamic Category breakdown */}
-        <div className="xl:col-span-2 bg-white rounded-2xl p-5 border border-border shadow-sm">
-          <h2 className="text-sm font-display font-700 text-slate-800 mb-1">Staff by Category</h2>
-          <p className="text-muted text-xs font-mono mb-5">Current check-in ratio</p>
-          <div className="space-y-3">
-            {categoryMetrics.map(cat => {
-              const pct = cat.total > 0 ? Math.min(100, Math.round((cat.count / cat.total) * 100)) : 0;
-              return (
-                <div key={cat.label}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-display font-600 text-slate-600">{cat.label}</span>
-                    <span className="text-xs font-mono text-muted">{cat.count}/{cat.total} ({pct}%)</span>
+        <div className="xl:col-span-2 bg-white rounded-2xl p-5 border border-border shadow-sm flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-sm font-display font-700 text-slate-800">Staff by Category & Cadre</h2>
+              <span className="text-[10px] font-mono text-muted uppercase bg-surface px-2 py-0.5 rounded-full border border-border">
+                {totalStaffCount} Members
+              </span>
+            </div>
+            <p className="text-muted text-xs font-mono mb-4">Live active check-in ratio by cadre</p>
+            <div className="space-y-3">
+              {categoryMetrics.map(cat => {
+                const pct = cat.total > 0 ? Math.min(100, Math.round((cat.count / cat.total) * 100)) : 0;
+                return (
+                  <div key={cat.label}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-display font-600 text-slate-700">{cat.label}</span>
+                      <span className="text-xs font-mono font-bold text-slate-800">{cat.count}/{cat.total} <span className="text-muted font-normal">({pct}%)</span></span>
+                    </div>
+                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div className={`h-full ${cat.color} rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />
+                    </div>
                   </div>
-                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div className={`h-full ${cat.color} rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
 
-          <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
+          <div className="mt-4 pt-3 border-t border-slate-100">
+            <div className="text-[10px] font-display font-bold text-slate-500 uppercase tracking-wider mb-2">Key Organizational Departments</div>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { label: '🏗️ Civil Engineering', count: employees.filter(e => e.department === 'Engineering').length },
+                { label: '📐 Quantity Surveying (QS)', count: employees.filter(e => e.department === 'Quantity Surveying').length },
+                { label: '💻 IT & GIS', count: employees.filter(e => e.department === 'Information Technology').length },
+                { label: '📋 Admin & HR', count: employees.filter(e => e.department === 'Human Resources' || e.department === 'Administration').length },
+                { label: '⚖️ Legal & Finance', count: employees.filter(e => e.department === 'Legal Affairs' || e.department === 'Finance').length },
+              ].map(d => (
+                <span key={d.label} className="text-[11px] font-display font-semibold bg-slate-50 border border-slate-200 text-slate-700 px-2 py-0.5 rounded-lg">
+                  {d.label}: <strong className="text-navy">{d.count}</strong>
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
             <div>
               <div className="text-xs font-mono text-muted mb-0.5">Overall Attendance Rate</div>
               <div className="text-2xl font-display font-800 text-navy">{attendanceRate}%</div>
             </div>
             <button
               onClick={() => { nav.setAdminTab('attendance'); nav.navigate('admin-attendance'); }}
-              className="text-xs font-display font-700 text-navy hover:underline"
+              className="text-xs font-display font-bold text-navy hover:text-navy-dark px-3 py-1.5 bg-navy-50 rounded-xl hover:bg-navy-100 transition-colors"
             >
               Full Roster →
             </button>

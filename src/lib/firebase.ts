@@ -28,6 +28,7 @@ import {
 } from 'firebase/firestore';
 import { Employee, AttendanceRecord, WorkplaceSettings, StaffCategory, SystemNotification, AttendanceStatus } from '../types';
 import { getDeviceSignature } from './deviceFingerprint';
+import { DEFAULT_DUR_EMPLOYEES, getHistoricalAttendanceRecords } from '../data';
 
 // Configuration from environment variables (with project defaults for deployed environments)
 const firebaseConfig = {
@@ -273,11 +274,19 @@ const LOCAL_SETTINGS_KEY = 'metroattend_settings';
 function getLocalUsers(): Employee[] {
   try {
     const raw = localStorage.getItem(LOCAL_USERS_KEY);
-    if (!raw) return [];
+    if (!raw) {
+      saveLocalUsers(DEFAULT_DUR_EMPLOYEES);
+      return DEFAULT_DUR_EMPLOYEES;
+    }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((u: Employee) => !u.name?.includes('Kwame Mensah')) : [];
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      const cleaned = parsed.filter((u: Employee) => !u.name?.includes('Kwame Mensah'));
+      if (cleaned.length > 0) return cleaned;
+    }
+    saveLocalUsers(DEFAULT_DUR_EMPLOYEES);
+    return DEFAULT_DUR_EMPLOYEES;
   } catch {
-    return [];
+    return DEFAULT_DUR_EMPLOYEES;
   }
 }
 
@@ -288,13 +297,21 @@ function saveLocalUsers(users: Employee[]) {
 function getLocalAttendance(): AttendanceRecord[] {
   try {
     const raw = localStorage.getItem(LOCAL_ATTENDANCE_KEY);
-    if (!raw) return [];
+    if (!raw) {
+      const initial = getHistoricalAttendanceRecords();
+      saveLocalAttendance(initial);
+      return initial;
+    }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) 
-      ? parsed.filter((r: AttendanceRecord) => !r.name?.includes('Kwame Mensah') && r.date !== 'Today') 
-      : [];
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      const cleaned = parsed.filter((r: AttendanceRecord) => !r.name?.includes('Kwame Mensah') && r.date !== 'Today');
+      if (cleaned.length > 0) return cleaned;
+    }
+    const initial = getHistoricalAttendanceRecords();
+    saveLocalAttendance(initial);
+    return initial;
   } catch {
-    return [];
+    return getHistoricalAttendanceRecords();
   }
 }
 
@@ -366,18 +383,40 @@ export async function saveUserProfile(uid: string, data: Partial<Employee>): Pro
  * Fetch all employees for Staff Management
  */
 export async function getAllEmployees(): Promise<Employee[]> {
+  let firestoreUsers: Employee[] = [];
   if (db) {
     try {
       const q = collection(db, 'users');
       const snap = await getDocs(q);
       if (!snap.empty) {
-        return snap.docs.map(d => ({ ...d.data(), id: d.id } as Employee));
+        firestoreUsers = snap.docs.map(d => ({ ...d.data(), id: d.id } as Employee));
       }
     } catch (e) {
       console.warn('Error getting employees from Firestore, using local storage:', e);
     }
   }
-  return getLocalUsers();
+
+  const local = getLocalUsers();
+
+  // Combine baseline DUR workforce with any registered users (like the administrator)
+  const combined = new Map<string, Employee>();
+  
+  // 1. Seed base DUR workforce
+  for (const emp of DEFAULT_DUR_EMPLOYEES) {
+    combined.set(emp.email.toLowerCase(), emp);
+  }
+  // 2. Merge local storage users
+  for (const emp of local) {
+    const key = (emp.email || emp.id || emp.uid || '').toLowerCase();
+    if (key) combined.set(key, emp);
+  }
+  // 3. Merge Firestore users (highest precedence for profile updates / admin role)
+  for (const emp of firestoreUsers) {
+    const key = (emp.email || emp.id || emp.uid || '').toLowerCase();
+    if (key) combined.set(key, emp);
+  }
+
+  return Array.from(combined.values());
 }
 
 /**
@@ -715,11 +754,12 @@ export function subscribeTodayAttendance(callback: (records: AttendanceRecord[])
         if (records.length > 0) {
           callback(records);
         } else {
-          callback(getLocalAttendance());
+          const localToday = getLocalAttendance().filter(r => r.date === todayStr);
+          callback(localToday);
         }
       }, (error) => {
         console.warn('Firestore snapshot error, using local data:', error);
-        callback(getLocalAttendance());
+        callback(getLocalAttendance().filter(r => r.date === todayStr));
       });
       return unsubscribe;
     } catch (e) {
@@ -727,7 +767,7 @@ export function subscribeTodayAttendance(callback: (records: AttendanceRecord[])
     }
   }
 
-  callback(getLocalAttendance());
+  callback(getLocalAttendance().filter(r => r.date === todayStr));
   return () => {};
 }
 
@@ -1167,18 +1207,33 @@ export async function deleteNotification(id: string, userId?: string, isAdminAct
 // ----------------------------------------------------
 
 export async function getAllAttendanceRecords(): Promise<AttendanceRecord[]> {
+  let firestoreRecords: AttendanceRecord[] = [];
   if (db) {
     try {
       const q = collection(db, 'attendance');
       const snap = await getDocs(q);
       if (!snap.empty) {
-        return snap.docs.map(d => ({ ...d.data(), id: d.id } as AttendanceRecord));
+        firestoreRecords = snap.docs.map(d => ({ ...d.data(), id: d.id } as AttendanceRecord));
       }
     } catch (e) {
       console.warn('Error fetching all attendance records from Firestore:', e);
     }
   }
-  return getLocalAttendance();
+
+  const local = getLocalAttendance();
+
+  // Deduplicate and combine by unique key (user + date)
+  const recordMap = new Map<string, AttendanceRecord>();
+  for (const r of local) {
+    const key = `${r.userId || r.employeeId || r.name}_${r.date}`;
+    recordMap.set(key, r);
+  }
+  for (const r of firestoreRecords) {
+    const key = `${r.userId || r.employeeId || r.name}_${r.date}`;
+    recordMap.set(key, r);
+  }
+
+  return Array.from(recordMap.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 }
 
 export async function updateAttendanceStatus(
